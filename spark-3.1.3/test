@@ -1,0 +1,7 @@
+./dev/make-distribution.sh \
+--name 3.1.3 \
+--tgz -Phive \
+-Phive-thriftserver \
+-Pyarn -Phadoop-3.1 \
+-Dhadoop.version=3.1.3 \
+-Dscala.version=2.12.11

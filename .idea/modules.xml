@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ProjectModuleManager">
+    <modules>
+      <module fileurl="file://$PROJECT_DIR$/.idea/spark-3.1.3.iml" filepath="$PROJECT_DIR$/.idea/spark-3.1.3.iml" />
+      <module fileurl="file://$PROJECT_DIR$/spark-3.1.3/assembly/spark-assembly_2.12.iml" filepath="$PROJECT_DIR$/spark-3.1.3/assembly/spark-assembly_2.12.iml" />
+      <module fileurl="file://$PROJECT_DIR$/spark-3.1.3/external/avro/spark-avro_2.12.iml" filepath="$PROJECT_DIR$/spark-3.1.3/external/avro/spark-avro_2.12.iml" />
+      <module fileurl="file://$PROJECT_DIR$/spark-3.1.3/sql/catalyst/spark-catalyst_2.12.iml" filepath="$PROJECT_DIR$/spark-3.1.3/sql/catalyst/spark-catalyst_2.12.iml" />
+      <module fileurl="file://$PROJECT_DIR$/spark-3.1.3/core/spark-core_2.12.iml" filepath="$PROJECT_DIR$/spark-3.1.3/core/spark-core_2.12.iml" />
+      <module fileurl="file://$PROJECT_DIR$/spark-3.1.3/examples/spark-examples_2.12.iml" filepath="$PROJECT_DIR$/spark-3.1.3/examples/spark-examples_2.12.iml" />
+      <module fileurl="file://$PROJECT_DIR$/spark-3.1.3/graphx/spark-graphx_2.12.iml" filepath="$PROJECT_DIR$/spark-3.1.3/graphx/spark-graphx_2.12.iml" />
+      <module fileurl="file://$PROJECT_DIR$/spark-3.1.3/sql/hive-thriftserver/spark-hive-thriftserver_2.12.iml" filepath="$PROJECT_DIR$/spark-3.1.3/sql/hive-thriftserver/spark-hive-thriftserver_2.12.iml" />
+      <module fileurl="file://$PROJECT_DIR$/spark-3.1.3/sql/hive/spark-hive_2.12.iml" filepath="$PROJECT_DIR$/spark-3.1.3/sql/hive/spark-hive_2.12.iml" />
+      <module fileurl="file://$PROJECT_DIR$/spark-3.1.3/common/kvstore/spark-kvstore_2.12.iml" filepath="$PROJECT_DIR$/spark-3.1.3/common/kvstore/spark-kvstore_2.12.iml" />
+      <module fileurl="file://$PROJECT_DIR$/spark-3.1.3/launcher/spark-launcher_2.12.iml" filepath="$PROJECT_DIR$/spark-3.1.3/launcher/spark-launcher_2.12.iml" />
+      <module fileurl="file://$PROJECT_DIR$/spark-3.1.3/mllib-local/spark-mllib-local_2.12.iml" filepath="$PROJECT_DIR$/spark-3.1.3/mllib-local/spark-mllib-local_2.12.iml" />
+      <module fileurl="file://$PROJECT_DIR$/spark-3.1.3/mllib/spark-mllib_2.12.iml" filepath="$PROJECT_DIR$/spark-3.1.3/mllib/spark-mllib_2.12.iml" />
+      <module fileurl="file://$PROJECT_DIR$/spark-3.1.3/common/network-common/spark-network-common_2.12.iml" filepath="$PROJECT_DIR$/spark-3.1.3/common/network-common/spark-network-common_2.12.iml" />
+      <module fileurl="file://$PROJECT_DIR$/spark-3.1.3/common/network-shuffle/spark-network-shuffle_2.12.iml" filepath="$PROJECT_DIR$/spark-3.1.3/common/network-shuffle/spark-network-shuffle_2.12.iml" />
+      <module fileurl="file://$PROJECT_DIR$/spark-3.1.3/spark-parent_2.12.iml" filepath="$PROJECT_DIR$/spark-3.1.3/spark-parent_2.12.iml" />
+      <module fileurl="file://$PROJECT_DIR$/spark-3.1.3/repl/spark-repl_2.12.iml" filepath="$PROJECT_DIR$/spark-3.1.3/repl/spark-repl_2.12.iml" />
+      <module fileurl="file://$PROJECT_DIR$/spark-3.1.3/common/sketch/spark-sketch_2.12.iml" filepath="$PROJECT_DIR$/spark-3.1.3/common/sketch/spark-sketch_2.12.iml" />
+      <module fileurl="file://$PROJECT_DIR$/spark-3.1.3/external/kafka-0-10-sql/spark-sql-kafka-0-10_2.12.iml" filepath="$PROJECT_DIR$/spark-3.1.3/external/kafka-0-10-sql/spark-sql-kafka-0-10_2.12.iml" />
+      <module fileurl="file://$PROJECT_DIR$/spark-3.1.3/sql/core/spark-sql_2.12.iml" filepath="$PROJECT_DIR$/spark-3.1.3/sql/core/spark-sql_2.12.iml" />
+      <module fileurl="file://$PROJECT_DIR$/spark-3.1.3/external/kafka-0-10-assembly/spark-streaming-kafka-0-10-assembly_2.12.iml" filepath="$PROJECT_DIR$/spark-3.1.3/external/kafka-0-10-assembly/spark-streaming-kafka-0-10-assembly_2.12.iml" />
+      <module fileurl="file://$PROJECT_DIR$/spark-3.1.3/external/kafka-0-10/spark-streaming-kafka-0-10_2.12.iml" filepath="$PROJECT_DIR$/spark-3.1.3/external/kafka-0-10/spark-streaming-kafka-0-10_2.12.iml" />
+      <module fileurl="file://$PROJECT_DIR$/spark-3.1.3/streaming/spark-streaming_2.12.iml" filepath="$PROJECT_DIR$/spark-3.1.3/streaming/spark-streaming_2.12.iml" />
+      <module fileurl="file://$PROJECT_DIR$/spark-3.1.3/common/tags/spark-tags_2.12.iml" filepath="$PROJECT_DIR$/spark-3.1.3/common/tags/spark-tags_2.12.iml" />
+      <module fileurl="file://$PROJECT_DIR$/spark-3.1.3/external/kafka-0-10-token-provider/spark-token-provider-kafka-0-10_2.12.iml" filepath="$PROJECT_DIR$/spark-3.1.3/external/kafka-0-10-token-provider/spark-token-provider-kafka-0-10_2.12.iml" />
+      <module fileurl="file://$PROJECT_DIR$/spark-3.1.3/tools/spark-tools_2.12.iml" filepath="$PROJECT_DIR$/spark-3.1.3/tools/spark-tools_2.12.iml" />
+      <module fileurl="file://$PROJECT_DIR$/spark-3.1.3/common/unsafe/spark-unsafe_2.12.iml" filepath="$PROJECT_DIR$/spark-3.1.3/common/unsafe/spark-unsafe_2.12.iml" />
+    </modules>
+  </component>
+</project>
