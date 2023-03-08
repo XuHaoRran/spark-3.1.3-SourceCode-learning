@@ -92,6 +92,7 @@ class PairRDDFunctions[K, V](self: RDD[(K, V)])
         new InterruptibleIterator(context, aggregator.combineValuesByKey(iter, context))
       }, preservesPartitioning = true)
     } else {
+      // 创建了shuffledRDD
       new ShuffledRDD[K, V, C](self, partitioner)
         .setSerializer(serializer)
         .setAggregator(aggregator)

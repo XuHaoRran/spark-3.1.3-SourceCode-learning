@@ -78,6 +78,8 @@ import org.apache.spark.util.{AccumulatorV2, Clock, SystemClock, ThreadUtils, Ut
  *  <p>TaskSchedulerImpl是底层的任务调度接口TaskScheduler的实现，这些Schedulers从每一个Stage中的DAGScheduler中获取TaskSet，
  *  运行它们，尝试是否有故障。DAGScheduler是高层调度，它计算每个Job的Stage的DAG，
  *  然后提交Stage，用TaskSets的形式启动底层TaskScheduler调度在集群中运行。
+ *
+ *  <p>TaskSchedulerImple负责具体Stage内部的底层调度（如具体每个Task的调度、Task的容错等）
  */
 private[spark] class TaskSchedulerImpl(
     val sc: SparkContext,

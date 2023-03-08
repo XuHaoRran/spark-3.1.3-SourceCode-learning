@@ -179,6 +179,14 @@ private[sql] object Dataset {
  *     .agg(avg(people.col("salary")), max(people.col("age")));
  * }}}
  *
+ * <p>Parse SQL(DataSet)
+ * →Analyze Logical Plan
+ * →Optimize Logical Plan
+ * →Generate Physical Plan
+ * →Prepareed Spark Plan
+ * →Execute SQL→Generate RDD。
+ * 基于DataSet的代码一步步转化成为RDD：最终调用execute()生成RDD。
+ *
  * @groupname basic Basic Dataset functions
  * @groupname action Actions
  * @groupname untypedrel Untyped transformations
@@ -3693,6 +3701,10 @@ class Dataset[T] private[sql](
   /**
    * Wrap a Dataset action to track the QueryExecution and time cost, then report to the
    * user-registered callback functions.
+   * withAction方法是一个高阶函数，第一个参数包括两项，字符串“collect”、QueryExecution类实例queryExecution
+   * 。第二个参数是一个函数（collectFromPlan函数），collectFromPlan函数输入一个SparkPlan计划，输出是一个数组。
+   * withAction方法将Dataset的action包裹起来，这样可跟踪QueryExecution和时间成本，然后汇报给用户注册的回调函数
+   * 。
    */
   private def withAction[U](name: String, qe: QueryExecution)(action: SparkPlan => U) = {
     SQLExecution.withNewExecutionId(qe, Some(name)) {

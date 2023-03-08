@@ -25,6 +25,8 @@ import org.apache.spark.unsafe.types.{CalendarInterval, UTF8String}
 /**
  * An abstract class for row used internally in Spark SQL, which only contains the columns as
  * internal types.
+ * InternalRow是通过语法树生成的一些数据结构。其子类包括BaseGenericInternalRow、JoinedRow、Row、
+ * UnsafeRow。
  */
 abstract class InternalRow extends SpecializedGetters with Serializable {
 

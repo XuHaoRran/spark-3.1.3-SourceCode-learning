@@ -916,6 +916,12 @@ class SparkContext(config: SparkConf) extends Logging {
       path: String,
       minPartitions: Int = defaultMinPartitions): RDD[String] = withScope {
     assertNotStopped()
+    // 读取数据会生成HadoopRDD
+    // 调用hadoopFile方法后进行了map转换操作，map对读取的每一行数据进行转换，读入的数据是一个Tuple，Key值为索引，
+    // Value值为每行数据的内容，生成MapPartitionsRDD。这里，map(pair => pair._2.toString)是基于HadoopRDD
+    // 产生的Partition去掉的行Key产生的Value，第二个元素是读取的每行数据内容。MapPartitionsRDD是Spark框架产生
+    // 的，运行中可能产生一个RDD，也可能产生两个RDD。例如，textFile中Spark框架就产生了两个RDD，即HadoopRDD和
+    // MapPartitionsRDD
     hadoopFile(path, classOf[TextInputFormat], classOf[LongWritable], classOf[Text],
       minPartitions).map(pair => pair._2.toString).setName(path)
   }
@@ -1119,11 +1125,17 @@ class SparkContext(config: SparkConf) extends Logging {
 
     // This is a hack to enforce loading hdfs-site.xml.
     // See SPARK-11227 for details.
+    // 加载hdfs-site.xml配置文件
     FileSystem.getLocal(hadoopConfiguration)
 
     // A Hadoop configuration can be about 10 KiB, which is pretty big, so broadcast it.
+    // hadoop配置文件大约有10KB，相当大，所以进行广播
     val confBroadcast = broadcast(new SerializableConfiguration(hadoopConfiguration))
     val setInputPathsFunc = (jobConf: JobConf) => FileInputFormat.setInputPaths(jobConf, path)
+    // 创建一个HadoopRDD，HadoopRDD从Hdfs上读取分布式数据，并且以数据分片的方式存在于集群中。所谓的数据分片，
+    // 就是把我们要处理的数据分成不同的部分，例如，在集群中有4个节点，粗略的划分可以认为将数据分成4个部分，4条语句就分成4个部分。
+    // 例如，Hello Spark在第一台机器上，Hello Hadoop在第二台机器上，Hello Flink在第三台机器上，Spark is Awesome在第四台机器上。
+    // HadoopRDD帮助我们从磁盘上读取数据，计算的时候会分布式地放入内存中，Spark运行在Hadoop上，要借助Hadoop来读取数据。
     new HadoopRDD(
       this,
       confBroadcast,

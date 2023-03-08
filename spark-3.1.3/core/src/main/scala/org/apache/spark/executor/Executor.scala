@@ -104,12 +104,15 @@ private[spark] class Executor(
   // Use UninterruptibleThread to run tasks so that we can allow running codes without being
   // interrupted by `Thread.interrupt()`. Some issues, such as KAFKA-1894, HADOOP-10622,
   // will hang forever if some methods are interrupted.
+  // 启动worker线程池
   private val threadPool = {
     val threadFactory = new ThreadFactoryBuilder()
       .setDaemon(true)
       .setNameFormat("Executor task launch worker-%d")
-      .setThreadFactory((r: Runnable) => new UninterruptibleThread(r, "unused"))
+      .setThreadFactory((r: Runnable) => new UninterruptibleThread(r, "unused")) // 使用UninterruptibleThread运行任务，
+        // 这样就可以允许运行代码不被Thread.interrupt西安测绘给你中端，如果某些方法被中断，程序将会一直被挂起的了啊
       .build()
+
     Executors.newCachedThreadPool(threadFactory).asInstanceOf[ThreadPoolExecutor]
   }
   private val schemes = conf.get(EXECUTOR_METRICS_FILESYSTEM_SCHEMES)
@@ -174,6 +177,7 @@ private[spark] class Executor(
   private val maxResultSize = conf.get(MAX_RESULT_SIZE)
 
   // Maintains the list of running tasks.
+  // 维护正在运行的任务列表
   private val runningTasks = new ConcurrentHashMap[Long, TaskRunner]
 
   /**
@@ -266,10 +270,12 @@ private[spark] class Executor(
 
   def launchTask(context: ExecutorBackend, taskDescription: TaskDescription): Unit = {
     // 调用TaskRunner句柄创建TaskRunner对象
+    // TaskRunner是一个Runnable，里面的run方法种包括任务的反序列化等内容，通过Runnable封装任务，然后放入到runningTasks中，
     val tr = new TaskRunner(context, taskDescription, plugins)
     // 将创建的TaskRunner对象放入即将进行的堆栈中
     runningTasks.put(taskDescription.taskId, tr)
-    // 从线程池中分配一条线程给TaskRunner
+    // 从线程池中分配一条线程给TaskRunner，是一个newDaemonCachedThreadPool，任务交给Executor的线程池中的线程去执行，执行
+    // 的时候下载资源、数据等内容
     threadPool.execute(tr)
     if (decommissioned) {
       log.error(s"Launching a task while in decommissioned state.")

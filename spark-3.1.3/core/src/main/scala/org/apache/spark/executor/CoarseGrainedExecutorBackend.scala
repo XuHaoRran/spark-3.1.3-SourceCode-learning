@@ -162,7 +162,9 @@ private[spark] class CoarseGrainedExecutorBackend(
         case NonFatal(e) =>
           exitExecutor(1, "Unable to create executor due to " + e.getMessage, e)
       }
-
+    // CoarseGrainedExecutorBackend收到Driver发送的LaunchTask任务消息，其中LaunchTask是case class，
+    // 而不是case object，是因为每个消息是一个消息实例，每个消息状态不一样，而case object是唯一的，因此使用case class
+    // Driver节点到executors节点
     case LaunchTask(data) =>
       if (executor == null) {
         exitExecutor(1, "Received LaunchTask command but executor was null")

@@ -36,6 +36,8 @@ import org.apache.spark.util.Utils
 
 /**
  * A [[SchedulerBackend]] implementation for Spark's standalone cluster manager.
+ * 负责集群计算资源的管理和调度，这是从作业的角度来考虑的，注册给Master的时候，Master给我们分配资源，资源从Executor本身转过来向
+ * StandaloneSchedulerBackend注册，这是从作业调度的角度来考虑的，不是从整个集群来考虑，整个集群是Master来管理计算资源的。
  */
 private[spark] class StandaloneSchedulerBackend(
     scheduler: TaskSchedulerImpl,

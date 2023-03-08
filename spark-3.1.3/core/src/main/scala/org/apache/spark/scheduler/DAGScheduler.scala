@@ -46,7 +46,24 @@ import org.apache.spark.storage.BlockManagerMessages.BlockManagerHeartbeat
 import org.apache.spark.util._
 
 /**
- * The high-level scheduling layer that implements stage-oriented scheduling. It computes a DAG of
+ * DAGScheduler负责高层调度（如Job中Stage的划分、数据本地性等内容）
+ *
+ * <p>DAGScheduler是面向Stage调度的高层调度实现。它为每一个Job计算DAG，
+ * 跟踪RDDS及Stage输出结果进行物化，并找到一个最小的计划去运行Job，
+ * 然后提交stages中的TaskSets到底层调度器TaskScheduler提交集群运行，
+ * TaskSet包含完全独立的任务，基于集群上已存在的数据运行（如从上一个Stage输出的文件），
+ * 如果这个数据不可用，获取数据可能会失败。
+ *
+ * <p>Spark Stages根据RDD图中Shuffle的边界来创建，如果RDD的操作是窄依赖，如map()和filter()，
+ * 在每个Stages中将一系列tasks组合成流水线执行。但是，如果是宽依赖，Shuffle依赖需要多个Stages
+ * （上一个Stage进行map输出写入文件，下一个Stage读取数据文件），每个Stage依赖于其他的Stage，其中进行多个算子操作。
+ * 算子操作在各种类型的RDDS（如MappedRDD、FilteredRDD）的RDD.compute()中实际执行。
+ *
+ * <p>DAGScheduler是面向Stage调度的高层调度实现。它为每一个Job计算DAG，跟踪RDDS及Stage输出结果进行物化，
+ * 并找到一个最小的计划去运行Job，然后提交stages中的TaskSets到底层调度器TaskScheduler提交集群运行，
+ * TaskSet包含完全独立的任务，基于集群上已存在的数据运行（如从上一个Stage输出的文件），如果这个数据不可用，获取数据可能会失败。
+ *
+ * <p>The high-level scheduling layer that implements stage-oriented scheduling. It computes a DAG of
  * stages for each job, keeps track of which RDDs and stage outputs are materialized, and finds a
  * minimal schedule to run the job. It then submits stages as TaskSets to an underlying
  * TaskScheduler implementation that runs them on the cluster. A TaskSet contains fully independent
@@ -73,6 +90,10 @@ import org.apache.spark.util._
  *  - Jobs (represented by [[ActiveJob]]) are the top-level work items submitted to the scheduler.
  *    For example, when the user calls an action, like count(), a job will be submitted through
  *    submitJob. Each Job may require the execution of multiple stages to build intermediate data.
+ *    DAGScheduler是面向Stage调度的高层调度实现。它为每一个Job计算DAG，跟踪RDDS及Stage输出结果进行物化，
+ *    并找到一个最小的计划去运行Job，然后提交stages中的TaskSets到底层调度器TaskScheduler提交集群运行，
+ *    TaskSet包含完全独立的任务，基于集群上已存在的数据运行（如从上一个Stage输出的文件），如果这个数据不可用，
+ *    获取数据可能会失败。
  *
  *  - Stages ([[Stage]]) are sets of tasks that compute intermediate results in jobs, where each
  *    task computes the same function on partitions of the same RDD. Stages are separated at shuffle
@@ -80,18 +101,27 @@ import org.apache.spark.util._
  *    fetch outputs). There are two types of stages: [[ResultStage]], for the final stage that
  *    executes an action, and [[ShuffleMapStage]], which writes map output files for a shuffle.
  *    Stages are often shared across multiple jobs, if these jobs reuse the same RDDs.
+ *    Stages ([Stage])是一组任务的集合，在相同的RDD分区上，每个任务计算相同的功能，计算Jobs的中间结果。
+ *    Stage根据Shuffle划分边界，我们必须等待前一阶段Stage完成输出。有两种类型的Stage：
+ *    [ResultStage]是执行action的最后一个Stage，[ShuffleMapStage]是Shuffle Stages通过map写入输出文件中的。
+ *    如果Jobs重用相同的RDDs，Stages可以跨越多个Jobs共享。
  *
  *  - Tasks are individual units of work, each sent to one machine.
+ *    Tasks任务是单独的工作单位，每个任务发送到一个分布式节点。
  *
  *  - Cache tracking: the DAGScheduler figures out which RDDs are cached to avoid recomputing them
  *    and likewise remembers which shuffle map stages have already produced output files to avoid
  *    redoing the map side of a shuffle.
+ *    缓存跟踪：DAGScheduler记录哪些RDDS被缓存，避免重复计算，
+ *    以及记录Shuffle map Stages已经生成的输出文件，避免在map端重新计算。
  *
  *  - Preferred locations: the DAGScheduler also computes where to run each task in a stage based
  *    on the preferred locations of its underlying RDDs, or the location of cached or shuffle data.
+ *    数据本地化：DAGScheduler基于RDDS的数据本地性、缓存位置，或Shuffle数据在Stage中运行每一个任务的Task。
  *
  *  - Cleanup: all data structures are cleared when the running jobs that depend on them finish,
  *    to prevent memory leaks in a long-running application.
+ *    清理：当依赖于它们的运行作业完成时，所有数据结构将被清除，防止在长期运行的应用程序中内存泄漏。
  *
  * To recover from failures, the same stage might need to run multiple times, which are called
  * "attempts". If the TaskScheduler reports that a task failed because a map output file from a
@@ -102,14 +132,22 @@ import org.apache.spark.util._
  * Stage objects for old (finished) stages where we previously cleaned up the Stage object. Since
  * tasks from the old attempt of a stage could still be running, care must be taken to map any
  * events received in the correct Stage object.
+ * 为了从故障中恢复，同一个Stage可能需要运行多次，这被称为重试“attempts”。如在上一个Stage中的输出文件丢失，
+ * TaskScheduler中将报告任务失败，DAGScheduler通过检测CompletionEvent与FetchFailed或ExecutorLost事件
+ * 重新提交丢失的Stage。DAGScheduler将等待看是否有其他节点或任务失败，然后在丢失计算任务的阶段Stage中重新提交
+ * TaskSets。
+ * 在这个过程中，可能须创建之前被清理的Stage。旧Stage的任务仍然可以运行，但必须在正确的Stage中接收事件并进行操作。
  *
  * Here's a checklist to use when making or reviewing changes to this class:
+ * 做改变或者回顾时需要看的清单如下
  *
  *  - All data structures should be cleared when the jobs involving them end to avoid indefinite
  *    accumulation of state in long-running programs.
+ *    Job运行结束时，所有的数据结构将被清理，及清理程序运行中的状态。
  *
  *  - When adding a new data structure, update `DAGSchedulerSuite.assertDataStructuresEmpty` to
  *    include the new structure. This will help to catch memory leaks.
+ *    添加一个新的数据结构时，在新结构中更新'DAGSchedulerSuite.assertDataStructuresEmpty'，包括新结构，将有助于捕获内存泄漏
  */
 private[spark] class DAGScheduler(
     private[scheduler] val sc: SparkContext,
@@ -1044,15 +1082,19 @@ private[spark] class DAGScheduler(
   /**
    * Resubmit any failed stages. Ordinarily called after a small amount of time has passed since
    * the last fetch failure.
+   * Stage输出失败，上层调度器DAGScheduler会进行重试
    */
   private[scheduler] def resubmitFailedStages(): Unit = {
+    // 判断是否存在失败的stages
     if (failedStages.nonEmpty) {
+      // 失败的阶段可以通过作业取消删除，如果resubmitFailedStages事件已调度，失败将是控制
       // Failed stages may be removed by job cancellation, so failed might be empty even if
       // the ResubmitFailedStages event has been scheduled.
       logInfo("Resubmitting failed stages")
       clearCacheLocs()
       val failedStagesCopy = failedStages.toArray
       failedStages.clear()
+      // 对之前获取的所有失败的stage，根据jobId排序后逐一充实
       for (stage <- failedStagesCopy.sortBy(_.firstJobId)) {
         submitStage(stage)
       }

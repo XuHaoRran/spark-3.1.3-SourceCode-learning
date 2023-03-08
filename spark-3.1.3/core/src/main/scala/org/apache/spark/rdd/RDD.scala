@@ -78,6 +78,12 @@ import org.apache.spark.util.random.{BernoulliCellSampler, BernoulliSampler, Poi
  * reading data from a new storage system) by overriding these functions. Please refer to the
  * <a href="http://people.csail.mit.edu/matei/papers/2012/nsdi_spark.pdf">Spark paper</a>
  * for more details on RDD internals.
+ *
+ * rdd容错的四大核心要点：
+ * 1.Stage输出失败，上层调度器DAGScheduler重试。
+ * 2.Spark计算中，Task内部任务失败，底层调度器重试。
+ * 3.RDD Lineage血统中窄依赖、宽依赖计算。
+ * 4.Checkpoint缓存。
  */
 abstract class RDD[T: ClassTag](
     @transient private var _sc: SparkContext,
@@ -1586,6 +1592,8 @@ abstract class RDD[T: ClassTag](
    * Save this RDD as a compressed text file, using string representations of elements.
    */
   def saveAsTextFile(path: String, codec: Class[_ <: CompressionCodec]): Unit = withScope {
+    // //编译器将调用隐式的“排序”方法来创建一个排序的 Nu11Writable。这就是为什么于Hadoop 1.+版本和Hadoop 2+版本的saveAsTextFile，
+    // 编译器会生成不同的名类。因此，这里提供了一个显式排序的“null”来确保编译器为 saveAsTextFile生成相同的字节码
     this.mapPartitions { iter =>
       val text = new Text()
       iter.map { x =>

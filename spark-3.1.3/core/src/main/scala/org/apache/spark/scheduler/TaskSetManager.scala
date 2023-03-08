@@ -737,6 +737,7 @@ private[spark] class TaskSetManager(
       }
 
       // Handle this task as a killed task
+      // Spark计算过程中，计算内部某个Task任务出现失败，底层调度器会对此Task进行若干次重试（默认4次）
       handleFailedTask(tid, TaskState.KILLED,
         TaskKilled("Finish but did not commit due to another attempt succeeded"))
       return
@@ -800,6 +801,7 @@ private[spark] class TaskSetManager(
   /**
    * Marks the task as failed, re-adds it to the list of pending tasks, and notifies the
    * DAG Scheduler.
+   * Spark计算过程中，计算内部某个Task任务出现失败，底层调度器会对此Task进行若干次重试（默认4次）
    */
   def handleFailedTask(tid: Long, state: TaskState, reason: TaskFailedReason): Unit = {
     val info = taskInfos(tid)
@@ -904,7 +906,9 @@ private[spark] class TaskSetManager(
       assert (null != failureReason)
       taskSetExcludelistHelperOpt.foreach(_.updateExcludedForFailedTask(
         info.host, info.executorId, index, failureReason))
+      // 对失败的Task的numFailures++
       numFailures(index) += 1
+      //判断失败的Task计数是否大于设定的最大失败次数，如果大于，则输出日志，并不再重试
       if (numFailures(index) >= maxTaskFailures) {
         logError("Task %d in stage %s failed %d times; aborting job".format(
           index, taskSet.id, maxTaskFailures))
@@ -922,7 +926,7 @@ private[spark] class TaskSetManager(
     } else {
       addPendingTask(index)
     }
-
+    // 如果运行的Task为0时，则完成Task步骤
     maybeFinishTaskSet()
   }
 

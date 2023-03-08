@@ -383,6 +383,10 @@ private[spark] abstract class MapOutputTracker(conf: SparkConf) extends Logging 
  *
  * ShuffleMapStage uses this class for tracking available / missing outputs in order to determine
  * which tasks need to be run.
+ *
+ * <p>MapOutputTrackerMaster负责Shuffle中数据输出和读取的管理。Shuffle的时候将数据写到本地，下一个Stage要使用上一个Stage的数据，
+ * 因此写数据的时候要告诉Driver中的MapOutputTrackerMaster具体写到哪里，下一个Stage读取数据的时候也要访问Driver的MapOutputTrackerMaster
+ * 获取数据的具体位置。
  */
 private[spark] class MapOutputTrackerMaster(
     conf: SparkConf,

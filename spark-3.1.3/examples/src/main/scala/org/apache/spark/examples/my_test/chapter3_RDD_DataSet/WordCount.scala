@@ -1,6 +1,6 @@
 package org.apache.spark.examples.my_test.chapter3_RDD_DataSet
 
-import org.apache.log4j.{Level, Logger}
+//import org.apache.log4j.{Level, Logger}
 import org.apache.spark.{SparkConf, SparkContext}
 
 /**
@@ -11,7 +11,7 @@ import org.apache.spark.{SparkConf, SparkContext}
   */
 object WordCount {
   def main(args: Array[String]) {
-    Logger.getLogger("org").setLevel(Level.WARN)
+//    Logger.getLogger("org").setLevel(Level.WARN)
 
     /**
       * 第1步：创建Spark的配置对象SparkConf，设置Spark程序的运行时的配置信息，

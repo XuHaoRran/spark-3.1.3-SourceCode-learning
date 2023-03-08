@@ -107,6 +107,7 @@ class QueryExecution(
 
   // executedPlan should not be used to initialize any SparkPlan. It should be
   // only used for execution.
+  // 不应该用来初始化任何Spark Plan，executePlan只用于执行
   lazy val executedPlan: SparkPlan = {
     // We need to materialize the optimizedPlan here, before tracking the planning phase, to ensure
     // that the optimization time is not counted as part of the planning phase.

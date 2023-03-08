@@ -170,7 +170,8 @@ abstract class SparkPlan extends QueryPlan[SparkPlan] with Logging with Serializ
   /**
    * Returns the result of this query as an RDD[InternalRow] by delegating to `doExecute` after
    * preparations.
-   *
+   * execute返回的查询结果类型为RDD[InternalRow]。
+   * SparkPlan.scala的doExecute()抽象方法没有具体实现，需通过SparkPlan子类重写此方法来进行具体实现。
    * Concrete implementations of SparkPlan should override `doExecute`.
    */
   final def execute(): RDD[InternalRow] = executeQuery {
@@ -318,6 +319,8 @@ abstract class SparkPlan extends QueryPlan[SparkPlan] with Logging with Serializ
    */
   private def getByteArrayRdd(
       n: Int = -1, takeFromEnd: Boolean = false): RDD[(Long, Array[Byte])] = {
+    // 调用执行execute().mapPartitionsInternal方法，
+    // execute方法内部调用doExecute方法，将此查询的结果作为RDD[internalRow]返回。
     execute().mapPartitionsInternal { iter =>
       var count = 0
       val buffer = new Array[Byte](4 << 10)  // 4K
@@ -342,6 +345,7 @@ abstract class SparkPlan extends QueryPlan[SparkPlan] with Logging with Serializ
       } else {
         // `iter.hasNext` may produce one row and buffer it, we should only call it when the
         // limit is not hit.
+        // iterhasnext 可以生成一行并对其进行缓冲，只在没有命中时才调用它
         while ((n < 0 || count < n) && iter.hasNext) {
           val row = iter.next().asInstanceOf[UnsafeRow]
           out.writeInt(row.getSizeInBytes)
@@ -382,11 +386,13 @@ abstract class SparkPlan extends QueryPlan[SparkPlan] with Logging with Serializ
 
   /**
    * Runs this query returning the result as an array.
+   * 执行查询，以数组形式返回结果
    */
   def executeCollect(): Array[InternalRow] = {
     val byteArrayRdd = getByteArrayRdd()
 
     val results = ArrayBuffer[InternalRow]()
+    // 调用RDD。scala的collect方法，collect方法最终通过sc.runJob提交Spark集群余小宁
     byteArrayRdd.collect().foreach { countAndBytes =>
       decodeUnsafeRows(countAndBytes._2).foreach(results.+=)
     }
