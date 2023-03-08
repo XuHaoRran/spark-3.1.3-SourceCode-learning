@@ -33,6 +33,10 @@ import org.apache.spark.util.CallSite
  * ShuffleMapStages can also be submitted independently as jobs with DAGScheduler.submitMapStage.
  * For such stages, the ActiveJobs that submitted them are tracked in `mapStageJobs`. Note that
  * there can be multiple ActiveJobs trying to compute the same shuffle map stage.
+ *
+ * <p>ShuffleMapStage是DAG产生数据进行Shuffle的中间阶段，它发生在每次Shuffle操作之前，可能包含多个Pipelined操作，
+ * ResultStage阶段捕获函数在RDD的分区上运行Action算子计算结果，有些Stage不是运行在RDD的所有的分区上，例如，first()、lookup()等。
+ * SparkListener是Spark调度器的事件监听接口。注意，这个接口随着Spark版本的不同会发生变化。
  */
 private[spark] class ShuffleMapStage(
     id: Int,

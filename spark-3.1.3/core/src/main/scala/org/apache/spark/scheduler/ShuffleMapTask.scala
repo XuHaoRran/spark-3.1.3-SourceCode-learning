@@ -74,16 +74,27 @@ private[spark] class ShuffleMapTask(
     if (locs == null) Nil else locs.distinct
   }
 
+  /**
+   * 首先，ShuffleMapTask会反序列化RDD及其依赖关系，然后通过调用RDD的iterator方法进行计算，
+   * 而iterator方法中进行的最终运算的方法是compute()。
+   *
+   * @param context
+   * @return
+   */
   override def runTask(context: TaskContext): MapStatus = {
     // Deserialize the RDD using the broadcast variable.
+    // 使用广播变量反序列化RDD
     val threadMXBean = ManagementFactory.getThreadMXBean
     val deserializeStartTimeNs = System.nanoTime()
     val deserializeStartCpuTime = if (threadMXBean.isCurrentThreadCpuTimeSupported) {
       threadMXBean.getCurrentThreadCpuTime
     } else 0L
+    // 创建序列化器
     val ser = SparkEnv.get.closureSerializer.newInstance()
+    // 反序列化出RDD和依赖关系
     val rddAndDep = ser.deserialize[(RDD[_], ShuffleDependency[_, _, _])](
       ByteBuffer.wrap(taskBinary.value), Thread.currentThread.getContextClassLoader)
+    // RDD反序列化的时间
     _executorDeserializeTimeNs = System.nanoTime() - deserializeStartTimeNs
     _executorDeserializeCpuTime = if (threadMXBean.isCurrentThreadCpuTimeSupported) {
       threadMXBean.getCurrentThreadCpuTime - deserializeStartCpuTime
@@ -96,6 +107,7 @@ private[spark] class ShuffleMapTask(
     val mapId = if (SparkEnv.get.conf.get(config.SHUFFLE_USE_OLD_FETCH_PROTOCOL)) {
       partitionId
     } else context.taskAttemptId()
+    // 用来将结果写入Shuffle管理器
     dep.shuffleWriterProcessor.write(rdd, dep, mapId, context, partition)
   }
 

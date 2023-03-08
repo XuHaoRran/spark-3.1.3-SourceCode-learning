@@ -189,6 +189,7 @@ private[spark] object TaskDescription {
     val resources = deserializeResources(dataIn)
 
     // Create a sub-buffer for the serialized task into its own buffer (to be deserialized later).
+    // 创建一个子缓冲用于子序列化任务将其变成自己的缓冲区（被放序列化后）
     val serializedTask = byteBuffer.slice()
 
     new TaskDescription(taskId, attemptNumber, executorId, name, index, partitionId, taskFiles,

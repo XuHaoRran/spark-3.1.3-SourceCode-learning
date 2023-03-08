@@ -74,6 +74,10 @@ import org.apache.spark.util.{AccumulatorV2, Clock, SystemClock, ThreadUtils, Ut
  *  is not utilized despite there being pending tasks (implemented inside [[TaskSetManager]]).
  *  The legacy heuristic only measured the time since the [[TaskSetManager]] last launched a task,
  *  and can be re-enabled by setting spark.locality.wait.legacyResetOnTaskLaunch to true.
+ *
+ *  <p>TaskSchedulerImpl是底层的任务调度接口TaskScheduler的实现，这些Schedulers从每一个Stage中的DAGScheduler中获取TaskSet，
+ *  运行它们，尝试是否有故障。DAGScheduler是高层调度，它计算每个Job的Stage的DAG，
+ *  然后提交Stage，用TaskSets的形式启动底层TaskScheduler调度在集群中运行。
  */
 private[spark] class TaskSchedulerImpl(
     val sc: SparkContext,

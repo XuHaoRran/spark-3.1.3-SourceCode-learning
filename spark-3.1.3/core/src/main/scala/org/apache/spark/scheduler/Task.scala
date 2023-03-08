@@ -40,6 +40,17 @@ import org.apache.spark.util._
  * ResultTasks, while earlier stages consist of ShuffleMapTasks. A ResultTask executes the task
  * and sends the task output back to the driver application. A ShuffleMapTask executes the task
  * and divides the task output to multiple buckets (based on the task's partitioner).
+ * <p>Task是计算运行在集群上的基本计算单位。一个Task负责处理RDD的一个Partition，一个RDD的多个Partition会分别由不同的Task去处理，
+ * 通过之前对RDD的窄依赖关系的讲解，我们可以发现在RDD的窄依赖中，子RDD中Partition的个数基本都大于等于父RDD中Partition的个数，
+ * 所以Spark计算中对于每一个Stage分配的Task的数目是基于该Stage中最后一个RDD的Partition的个数来决定的。最后一个RDD如果有100个Partition，
+ * 则Spark对这个Stage分配100个Task。
+ *
+ * <p>Task运行于Executor上，而Executor位于CoarseGrainedExecutorBackend（JVM进程）中。
+ *
+ * <p>Spark Job中，根据Task所处Stage的位置，我们将Task分为两类：第一类为shuffleMapTask，指Task所处的Stage不是最后一个Stage，
+ * 也就是Stage的计算结果还没有输出，而是通过Shuffle交给下一个Stage使用；第二类为resultTask，指Task所处Stage是DAG中最后一个Stage，
+ * 也就是Stage计算结果需要进行输出等操作，计算到此已经结束；简单地说，Spark Job中除了最后一个Stage的Task为resultTask，
+ * 其他所有Task都为shuffleMapTask
  *
  * @param stageId id of the stage this task belongs to
  * @param stageAttemptId attempt id of the stage this task belongs to

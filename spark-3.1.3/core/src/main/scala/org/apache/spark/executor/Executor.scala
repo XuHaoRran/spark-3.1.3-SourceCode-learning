@@ -265,8 +265,11 @@ private[spark] class Executor(
   }
 
   def launchTask(context: ExecutorBackend, taskDescription: TaskDescription): Unit = {
+    // 调用TaskRunner句柄创建TaskRunner对象
     val tr = new TaskRunner(context, taskDescription, plugins)
+    // 将创建的TaskRunner对象放入即将进行的堆栈中
     runningTasks.put(taskDescription.taskId, tr)
+    // 从线程池中分配一条线程给TaskRunner
     threadPool.execute(tr)
     if (decommissioned) {
       log.error(s"Launching a task while in decommissioned state.")
@@ -429,6 +432,10 @@ private[spark] class Executor(
       (accums, accUpdates)
     }
 
+    /**
+     * 在TaskRunner的run方法首先会通过statusUpdate给Driver发信息汇报自己的状态，说明自己处于running状态。
+     * 同时，TaskRunner内部会做一些准备工作，如反序列化Task的依赖，通过网络获取需要的文件、Jar等；然后反序列化Task本身。
+     */
     override def run(): Unit = {
       setMDCForTask(taskName, mdcProperties)
       threadId = Thread.currentThread.getId
@@ -451,10 +458,13 @@ private[spark] class Executor(
       try {
         // Must be set before updateDependencies() is called, in case fetching dependencies
         // requires access to properties contained within (e.g. for access control).
+        // 必须在调用UpdateDependecies之前设置，获取依赖项
+        // 需要访问的属性（例如用于访问控制）
         Executor.taskDeserializationProps.set(taskDescription.properties)
 
         updateDependencies(
           taskDescription.addedFiles, taskDescription.addedJars, taskDescription.addedArchives)
+        // 反序列化Task本身
         task = ser.deserialize[Task[Any]](
           taskDescription.serializedTask, Thread.currentThread.getContextClassLoader)
         task.localProperties = taskDescription.properties
@@ -490,6 +500,10 @@ private[spark] class Executor(
         } else 0L
         var threwException = true
         val value = Utils.tryWithSafeFinally {
+          // task.run方法调用了runTask的方法，而runTask方法是一个抽象方法，
+          // runTask方法内部会调用RDD的iterator()方法，该方法就是针对当
+          // 前Task对应的Partition进行计算的关键所在，在处理的方法内部会迭代Partition的元素，
+          // 并交给我们自定义的function进行处理。
           val res = task.run(
             taskAttemptId = taskId,
             attemptNumber = taskDescription.attemptNumber,
@@ -526,10 +540,12 @@ private[spark] class Executor(
           // uh-oh.  it appears the user code has caught the fetch-failure without throwing any
           // other exceptions.  Its *possible* this is what the user meant to do (though highly
           // unlikely).  So we will log an error and keep going.
+            // 用户代码捕获了获取失败，但没有引发任何异常，记录一个错误并继续
           logError(s"$taskName completed successfully though internally it encountered " +
             s"unrecoverable fetch failures!  Most likely this means user code is incorrectly " +
             s"swallowing Spark's internal ${classOf[FetchFailedException]}", fetchFailure)
         }
+        // 计算完成的时间
         val taskFinishNs = System.nanoTime()
         val taskFinishCpu = if (threadMXBean.isCurrentThreadCpuTimeSupported) {
           threadMXBean.getCurrentThreadCpuTime

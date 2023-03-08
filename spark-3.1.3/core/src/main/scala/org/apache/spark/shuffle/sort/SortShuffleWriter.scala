@@ -47,7 +47,10 @@ private[spark] class SortShuffleWriter[K, V, C](
 
   private val writeMetrics = context.taskMetrics().shuffleWriteMetrics
 
-  /** Write a bunch of records to this task's output */
+  /** Write a bunch of records to this task's output
+   *  然后在计算具体的Partition之后，通过shuffleManager获得的shuffleWriter把当前Task计算的结果根据具体的shuffleManager实现写入到
+   *  具体的文件中，操作完成后会把MapStatus发送给Driver端的DAGScheduler的MapOutputTracker。
+   * */
   override def write(records: Iterator[Product2[K, V]]): Unit = {
     sorter = if (dep.mapSideCombine) {
       new ExternalSorter[K, V, C](

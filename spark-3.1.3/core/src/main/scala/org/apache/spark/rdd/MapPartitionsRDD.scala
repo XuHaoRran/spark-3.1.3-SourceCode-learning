@@ -40,7 +40,9 @@ private[spark] class MapPartitionsRDD[U: ClassTag, T: ClassTag](
     var prev: RDD[T],
     f: (TaskContext, Int, Iterator[T]) => Iterator[U],  // (TaskContext, partition index, iterator)
     preservesPartitioning: Boolean = false,
+   // 此RDD是否从RDDBarrier转换，至少含有一个RDDBarrier的Stage阶段将转变为屏障阶段
     isFromBarrier: Boolean = false,
+   // 指示函数是否区分顺序
     isOrderSensitive: Boolean = false)
   extends RDD[U](prev) {
 
@@ -59,6 +61,21 @@ private[spark] class MapPartitionsRDD[U: ClassTag, T: ClassTag](
   @transient protected lazy override val isBarrier_ : Boolean =
     isFromBarrier || dependencies.exists(_.rdd.isBarrier())
 
+  /**
+   * 获取DeterministicLevel的Value值
+   * 其中DeterministicLevel定义了RDD输出结果的确定级别（即“RDD compute”返回的值）。当Spark RDD重新运行任务时，输出将有所不同。
+   * （1）确定DETERMINATE：在重新运行后，RDD输出总是以相同顺序的相同数据集。
+   * （2）无序：RDD输出总是相同的数据集，但重新运行之后顺序可能不同。
+   * （3）不确定的。重新运行后，RDD输出可能不同。
+   *  注意，RDD的输出通常依赖于父RDD。当父RDD的输出是不确定的，很可能RDD的输出也是不确定的。
+   *
+   *
+   *  <p>例如，在计算的过程中，会产生很多的数据碎片，这时产生一个Partition可能会非常小，如果一个Partition非常小，
+   *  每次都会消耗一个线程去处理，这时可能会降低它的处理效率，需要考虑把许多小的Partition合并成一个较大的Partition去处理，
+   *  这样会提高效率。另外，有可能内存不是那么多，而每个Partition的数据Block比较大，这时需要考虑把Partition变成更小的数据分片，这样让Spark处理更多的批次，
+   *  但是不会出现OOM。
+   * @return
+   */
   override protected def getOutputDeterministicLevel = {
     if (isOrderSensitive && prev.outputDeterministicLevel == DeterministicLevel.UNORDERED) {
       DeterministicLevel.INDETERMINATE

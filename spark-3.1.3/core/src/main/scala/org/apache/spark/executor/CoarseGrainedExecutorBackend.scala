@@ -167,9 +167,12 @@ private[spark] class CoarseGrainedExecutorBackend(
       if (executor == null) {
         exitExecutor(1, "Received LaunchTask command but executor was null")
       } else {
+        // launchTask中调用了decode方法，解析读取dataIn、taskId、attemptNumber、executorId、name、index等信息，
+        // 读取相应的JAR、文件、属性，返回TaskDescription值。
         val taskDesc = TaskDescription.decode(data.value)
         logInfo("Got assigned task " + taskDesc.taskId)
         taskResources(taskDesc.taskId) = taskDesc.resources
+        // 创建一个TaskRunner实例在threadPool来运行具体的Task
         executor.launchTask(this, taskDesc)
       }
 

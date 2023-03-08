@@ -208,6 +208,7 @@ abstract class RDD[T: ClassTag](
 
   /**
    * Persist this RDD with the default storage level (`MEMORY_ONLY`).
+   * 默认的存储级别-StorageLevel.MEMORY_ONLY
    */
   def cache(): this.type = persist()
 
@@ -329,9 +330,13 @@ abstract class RDD[T: ClassTag](
    * Internal method to this RDD; will read from cache if applicable, or otherwise compute it.
    * This should ''not'' be called by users directly, but is available for implementers of custom
    * subclasses of RDD.
+   * RDD的内部方法，将从合适的缓存中读取，否则计算它这不应该被用户直接使用，但可用于实现自定义的子RDD
    */
   final def iterator(split: Partition, context: TaskContext): Iterator[T] = {
+    // 判断此RDD的持久化等级是否为None，（不进行持久化）
     if (storageLevel != StorageLevel.NONE) {
+      // iterator方法中进行的最终运算方法是compute
+      // RDD的compute方法是一个抽象方法，每个RDD都需要重写的方法。
       getOrCompute(split, context)
     } else {
       computeOrReadCheckpoint(split, context)
@@ -381,6 +386,10 @@ abstract class RDD[T: ClassTag](
     val blockId = RDDBlockId(id, partition.index)
     var readCachedBlock = true
     // This method is called on executors, so we need call SparkEnv.get instead of sc.env.
+    // 去BlockManager里匹配该Partition是否被checkpoint，如果是，那就不用计算该Partition，直接从checkpoint中读取该Partition的
+    // 所有records放入ArrayBuffer里面，如果没有被checkpoint过，先将Partition计算出来，然后将其所有records放到cache中。总体来说，
+    // 当RDD会被重复使用（不能太大）时，RDD需要cache。 Spark自动监控每个节点缓存的使用情况，利用最近最少使用原则删除老旧的数据。
+    // 如果想手动删除RDD，可以使用RDD.unpersist()方法。
     SparkEnv.get.blockManager.getOrElseUpdate(blockId, storageLevel, elementClassTag, () => {
       readCachedBlock = false
       computeOrReadCheckpoint(partition, context)
@@ -504,6 +513,8 @@ abstract class RDD[T: ClassTag](
    * coalesce(1000, shuffle = true) will result in 1000 partitions with the
    * data distributed using a hash partitioner. The optional partition coalescer
    * passed in must be serializable.
+   *
+   * <p>Spark进行数据分片时，默认将数据放在内存中，如果内存放不下，一部分会放在磁盘上进行保存。
    */
   def coalesce(numPartitions: Int, shuffle: Boolean = false,
                partitionCoalescer: Option[PartitionCoalescer] = Option.empty)
@@ -511,10 +522,13 @@ abstract class RDD[T: ClassTag](
       : RDD[T] = withScope {
     require(numPartitions > 0, s"Number of partitions ($numPartitions) must be positive.")
     if (shuffle) {
-      /** Distributes elements evenly across output partitions, starting from a random partition. */
+      /** Distributes elements evenly across output partitions, starting from a random partition.
+       * 从随机分区开始，将元素均匀分布在输出分区上
+       * */
       val distributePartition = (index: Int, items: Iterator[T]) => {
         var position = new Random(hashing.byteswap32(index)).nextInt(numPartitions)
         items.map { t =>
+            // 注：Key的哈希码是key本身，HashPartitioner分区器将它与总分区数进行驱魔运算
           // Note that the hash code of the key will just be the key itself. The HashPartitioner
           // will mod it with the number of total partitions.
           position = position + 1
@@ -523,8 +537,12 @@ abstract class RDD[T: ClassTag](
       } : Iterator[(Int, T)]
 
       // include a shuffle step so that our upstream tasks are still distributed
+      // 包括一个shuffle步骤，使我们的上游任务仍然是分布式的.
+      // 方法中传入的参数新增一个字段isOrderSensitive。isOrderSensitive用来标识函数是否区分顺序。如果它是对顺序敏感的，
+      // 当输入顺序改变时，它可能返回完全不同的结果。大多数状态函数是对顺序敏感的。
       new CoalescedRDD(
         new ShuffledRDD[Int, T, T](
+          // 构建一个MapPartitionsRDD类，构建类实例时传入isOrderSensitive
           mapPartitionsWithIndexInternal(distributePartition, isOrderSensitive = true),
           new HashPartitioner(numPartitions)),
         numPartitions,

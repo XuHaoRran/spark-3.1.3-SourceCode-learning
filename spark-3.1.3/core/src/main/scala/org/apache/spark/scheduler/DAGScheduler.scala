@@ -220,6 +220,8 @@ private[spark] class DAGScheduler(
 
   /**
    * Number of consecutive stage attempts allowed before a stage is aborted.
+   * 在Stage终止之前允许的Stage连续尝试的次数为4次，在DAGScheduler.scala的源码object DAGScheduler中进行定义。
+   *
    */
   private[scheduler] val maxConsecutiveStageAttempts =
     sc.getConf.getInt("spark.stage.maxConsecutiveAttempts",
@@ -431,6 +433,8 @@ private[spark] class DAGScheduler(
   def createShuffleMapStage[K, V, C](
       shuffleDep: ShuffleDependency[K, V, C], jobId: Int): ShuffleMapStage = {
     val rdd = shuffleDep.rdd
+
+    // 返回给定RDD的父节点中直接的Shuffle依赖
     val (shuffleDeps, resourceProfiles) = getShuffleDependenciesAndResourceProfiles(rdd)
     val resourceProfile = mergeResourceProfilesForStage(resourceProfiles)
     checkBarrierStageWithDynamicAllocation(rdd)
@@ -573,6 +577,7 @@ private[spark] class DAGScheduler(
   /**
    * Get or create the list of parent stages for the given shuffle dependencies. The new
    * Stages will be created with the provided firstJobId.
+   * 获取或创建一个给定RDD的父Stages列表
    */
   private def getOrCreateParentStages(shuffleDeps: HashSet[ShuffleDependency[_, _, _]],
       firstJobId: Int): List[Stage] = {
@@ -618,6 +623,7 @@ private[spark] class DAGScheduler(
    * calling this function with rdd C will only return the B <-- C dependency.
    *
    * This function is scheduler-visible for the purpose of unit testing.
+   * <p>getShuffleDependencies返回给定RDD的父节点中直接的Shuffle依赖
    */
   private[scheduler] def getShuffleDependenciesAndResourceProfiles(
       rdd: RDD[_]): (HashSet[ShuffleDependency[_, _, _]], HashSet[ResourceProfile]) = {
@@ -2513,8 +2519,10 @@ private[spark] object DAGScheduler {
   // The time, in millis, to wait for fetch failure events to stop coming in after one is detected;
   // this is a simplistic way to avoid resubmitting tasks in the non-fetchable map stage one by one
   // as more failure events come in
+  // 在毫秒级别，等待读取失败时间后就停止（在下一个检测到来之前）；这时一个避免重新提交任务的简单方法，非读取数据的map中更多失败事件的到来
   val RESUBMIT_TIMEOUT = 200
 
   // Number of consecutive stage attempts allowed before a stage is aborted
+  // 在终止之前允许连续尝试的次数
   val DEFAULT_MAX_CONSECUTIVE_STAGE_ATTEMPTS = 4
 }

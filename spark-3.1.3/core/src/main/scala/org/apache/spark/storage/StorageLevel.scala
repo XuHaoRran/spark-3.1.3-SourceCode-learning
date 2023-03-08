@@ -146,22 +146,30 @@ class StorageLevel private(
 
 
 /**
- * Various [[org.apache.spark.storage.StorageLevel]] defined and utility functions for creating
- * new storage levels.
+ * Various [[org.apache.spark.storage.StorageLevel]] defined and utility functions for creating new storage levels.
+ * StorageLevel是控制存储RDD的标志，每个StorageLevel记录RDD是否使用memory，或使用ExternalBlockStore存储，
+ * 如果RDD脱离了memory或ExternalBlockStore，是否扔掉RDD，是否保留数据在内存中的序列化格式，以及是否复制多个节点的RDD分区。
+ * 另外，org.apache.spark.storage.StorageLevel是单实例（singleton）对象，
+ * 包含了一些静态常量和常用的存储级别，且可用singleton对象工厂方法StorageLevel(…)创建定制化的存储级别。
  */
 object StorageLevel {
   val NONE = new StorageLevel(false, false, false, false)
+  // 除非算子计算RDD花费较大或者需要过滤大量的数据，不要将RDD存储到磁盘上，否则重复计算一个分区，就会和从磁盘上读取数据一样慢。
   val DISK_ONLY = new StorageLevel(true, false, false, false)
   val DISK_ONLY_2 = new StorageLevel(true, false, false, false, 2)
   val DISK_ONLY_3 = new StorageLevel(true, false, false, false, 3)
   val MEMORY_ONLY = new StorageLevel(false, true, false, true)
   val MEMORY_ONLY_2 = new StorageLevel(false, true, false, true, 2)
+  // 如果不适合用默认级别，就选择MEMORY_ONLY_SER。选择一个更快的序列化库提高对象的空间使用率，但是仍能够相当快地访问。
   val MEMORY_ONLY_SER = new StorageLevel(false, true, false, false)
   val MEMORY_ONLY_SER_2 = new StorageLevel(false, true, false, false, 2)
   val MEMORY_AND_DISK = new StorageLevel(true, true, false, true)
   val MEMORY_AND_DISK_2 = new StorageLevel(true, true, false, true, 2)
   val MEMORY_AND_DISK_SER = new StorageLevel(true, true, false, false)
   val MEMORY_AND_DISK_SER_2 = new StorageLevel(true, true, false, false, 2)
+  // Off_Heap（将对象从堆中脱离出来序列化，然后存储在一大块内存中，这就像它存储到磁盘上一样，但它仍然在RAM内存中。Off_Heap对象在这种状态下不能直接使用，
+  // 须进行序列化及反序列化。序列化和反序列化可能会影响性能，Off_Heap堆外内存不需要进行GC）。Off_Heap具有如下优势：Off_Heap运行多个执行者共享的Alluxio中相同的内存池，
+  // 显著地减少GC。如果单个的Executor崩溃，缓存的数据也不会丢失。
   val OFF_HEAP = new StorageLevel(true, true, true, false, 1)
 
   /**

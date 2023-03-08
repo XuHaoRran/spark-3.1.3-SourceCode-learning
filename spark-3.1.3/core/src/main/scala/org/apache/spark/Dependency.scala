@@ -58,6 +58,10 @@ abstract class NarrowDependency[T](_rdd: RDD[T]) extends Dependency[T] {
  * Represents a dependency on the output of a shuffle stage. Note that in the case of shuffle,
  * the RDD is transient since we don't need it on the executor side.
  *
+ * <p>newShuffleId()产生了新的shuffleId，表明宽依赖过程需要涉及shuffle操作，
+ * 后续的代码表示宽依赖进行时的shuffle操作需要向shuffleManager注册信息
+ *
+ *
  * @param _rdd the parent RDD
  * @param partitioner partitioner used to partition the shuffle output
  * @param serializer [[org.apache.spark.serializer.Serializer Serializer]] to use. If not set
@@ -118,6 +122,9 @@ class ShuffleDependency[K: ClassTag, V: ClassTag, C: ClassTag](
 /**
  * :: DeveloperApi ::
  * Represents a one-to-one dependency between partitions of the parent and child RDDs.
+ *
+ * <p>OneToOneDependency的getParents重写方法引入了参数partitionId，而在具体的方法中也使用了这个参数，这表明子RDD在使用getParents方法的时候，
+ * 查询的是相同partitionId的内容。也就是说，子RDD仅仅依赖父RDD中相同partitionID的Partition。
  */
 @DeveloperApi
 class OneToOneDependency[T](rdd: RDD[T]) extends NarrowDependency[T](rdd) {
@@ -137,6 +144,13 @@ class OneToOneDependency[T](rdd: RDD[T]) extends NarrowDependency[T](rdd) {
 class RangeDependency[T](rdd: RDD[T], inStart: Int, outStart: Int, length: Int)
   extends NarrowDependency[T](rdd) {
 
+  /**
+   * RangeDependency和OneToOneDependency最大的区别是实现方法中出现了outStart、length、inStart，
+   * 子RDD在通过getParents方法查询对应的Partition时，会根据这个partitionId减去插入时的开始ID，再加上它在父RDD中的位置ID，换而言之，
+   * 就是将父RDD中的Partition，根据partitionId的顺序依次插入到子RDD中。
+   * @param partitionId a partition of the child RDD
+   *  @return the partitions of the parent RDD that the child partition depends upon
+   */
   override def getParents(partitionId: Int): List[Int] = {
     if (partitionId >= outStart && partitionId < outStart + length) {
       List(partitionId - outStart + inStart)

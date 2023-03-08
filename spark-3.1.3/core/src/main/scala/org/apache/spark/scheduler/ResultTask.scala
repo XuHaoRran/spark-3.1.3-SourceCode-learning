@@ -72,14 +72,22 @@ private[spark] class ResultTask[T, U](
     if (locs == null) Nil else locs.distinct
   }
 
+  /**
+   * 反序列化生成func函数，最后通过func函数计算出最终的结果
+   * @param context
+   * @return
+   */
   override def runTask(context: TaskContext): U = {
     // Deserialize the RDD and the func using the broadcast variables.
+    // 使用广播变量反序列化RDD及函数
     val threadMXBean = ManagementFactory.getThreadMXBean
     val deserializeStartTimeNs = System.nanoTime()
     val deserializeStartCpuTime = if (threadMXBean.isCurrentThreadCpuTimeSupported) {
       threadMXBean.getCurrentThreadCpuTime
     } else 0L
+    /// 创建序列化器
     val ser = SparkEnv.get.closureSerializer.newInstance()
+    // 反序列RDD和func处理函数
     val (rdd, func) = ser.deserialize[(RDD[T], (TaskContext, Iterator[T]) => U)](
       ByteBuffer.wrap(taskBinary.value), Thread.currentThread.getContextClassLoader)
     _executorDeserializeTimeNs = System.nanoTime() - deserializeStartTimeNs
