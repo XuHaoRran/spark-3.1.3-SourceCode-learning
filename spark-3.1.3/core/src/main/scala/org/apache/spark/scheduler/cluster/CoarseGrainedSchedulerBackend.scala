@@ -47,6 +47,28 @@ import org.apache.spark.util.{RpcUtils, SerializableBuffer, ThreadUtils, Utils}
  * each new task. Executors may be launched in a variety of ways, such as Mesos tasks for the
  * coarse-grained Mesos mode or standalone processes for Spark's standalone deploy mode
  * (spark.deploy.*).
+ * CoarseGrainedSchedulerBackend是Apache Spark中的一种资源调度器后端（scheduler backend），负责将任务分配给集群中的执行器（executors）。
+ * 在YARN cluster模式下，CoarseGrainedSchedulerBackend表示Apache Spark应用程序的主节点（driver node），它与YARN ResourceManager交互，
+ * 向YARN请求资源（CPU、内存等）以及启动和停止应用程序中的任务。一旦应用程序启动，CoarseGrainedSchedulerBackend将根据应用程序中的任务需求动态地
+ * 分配和管理资源，并将任务分配给集群中的可用执行器。
+ * CoarseGrainedSchedulerBackend还负责在任务执行期间监控执行器的健康状况，
+ * 并重新分配任务以确保高效的资源利用和任务完成。
+ *
+ * <p>yarn-cluster模式运行在主节点driver node中，就是nodemanager
+ * <p>yarn-client模式运行在客户端driver node中，就是nodemanager
+ *
+ * <p>补充的知识：在YARN中，Application Master（应用程序主管）是负责管理应用程序的资源请求和任务执行的进程。
+ * 在YARN cluster模式下，Spark Driver Node会作为一个Application Master来运行。因此，Spark Driver Node实际上运行
+ * 在YARN Application Master中，而不是NodeManager中的container容器中。
+ * <p>当应用程序提交到YARN时，ResourceManager会为应用程序启动一个YARN Application Master，并在该Application Master中为应用程序的
+ * Driver Node分配一个container。该container中运行的Application Master就是应用程序的主节点，负责协调任务的执行，并与ResourceManager
+ * 交互以请求和释放资源。而Driver Node就是运行在该Application Master中的，负责分配和管理任务到集群中的执行器（executors）中。因此，
+ * YARN Application Master和container为应用程序提供了一个可管理的、可伸缩的计算资源池，
+ * 并与Driver Node
+ * 密切
+ * 关联
+ * 。
+ * <
  */
 private[spark]
 class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: RpcEnv)
@@ -139,6 +161,11 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
       }, 0, reviveIntervalMs, TimeUnit.MILLISECONDS)
     }
 
+    /**
+     * 这里接收来自Driver发送过来的信息，比如makeOffers就是DAGSheduler最后划分stage之后将task分发的信息传输到CoarseGrainedSchedulerBackend里面的了啊，
+     * 将Executor的信息集合与调度池中的Tasks封装成WorkerOffers列表传给了lauchTasks
+     * @return
+     */
     override def receive: PartialFunction[Any, Unit] = {
       case StatusUpdate(executorId, taskId, state, data, resources) =>
         scheduler.statusUpdate(taskId, state, data.value)
@@ -154,6 +181,8 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
                   r.release(v.addresses)
                 }
               }
+              // makeOffers就是DAGSheduler最后划分stage之后将task分发的信息传输到CoarseGrainedSchedulerBackend里面滴，
+              // 将Executor的信息集合与调度池中的Tasks封装成WorkerOffers列表传给了lauchTasks
               makeOffers(executorId)
             case None =>
               // Ignoring the update since we don't know about the executor.
@@ -161,7 +190,6 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
                 s"from unknown executor with ID $executorId")
           }
         }
-
       case ReviveOffers =>
         makeOffers()
 
@@ -343,11 +371,13 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
         }
       }
       if (taskDescs.nonEmpty) {
+        // makeOffers方法中，将Executor的信息集合与调度池中的Tasks封装成WorkerOffers列表传给了launchTasks
         launchTasks(taskDescs)
       }
     }
 
     // Launch tasks returned by a set of resource offers
+    // 遍历Tasks集合，每个Task任务序列化，发送启动Task执行信息的给Executor的onReceive方法
     private def launchTasks(tasks: Seq[Seq[TaskDescription]]): Unit = {
       for (task <- tasks.flatten) {
         val serializedTask = TaskDescription.encode(task)

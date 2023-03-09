@@ -242,6 +242,7 @@ private[spark] class TaskSchedulerImpl(
     logInfo("Adding task set " + taskSet.id + " with " + tasks.length + " tasks "
       + "resource profile " + taskSet.resourceProfileId)
     this.synchronized {
+      // 创建TaskSetManager保存了taskSet任务列表
       val manager = createTaskSetManager(taskSet, maxTaskFailures)
       val stage = taskSet.stageId
       val stageTaskSets =
@@ -259,6 +260,7 @@ private[spark] class TaskSchedulerImpl(
       stageTaskSets.foreach { case (_, ts) =>
         ts.isZombie = true
       }
+      // 将任务加入调度池
       stageTaskSets(taskSet.stageAttemptId) = manager
       schedulableBuilder.addTaskSetManager(manager, manager.taskSet.properties)
 
@@ -277,6 +279,7 @@ private[spark] class TaskSchedulerImpl(
       }
       hasReceivedTask = true
     }
+    // 接受任务，这里的backend是coarseGrainedSchedulerBackend一个Executor任务调度对象
     backend.reviveOffers()
   }
 

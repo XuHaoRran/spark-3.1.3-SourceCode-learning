@@ -43,9 +43,11 @@ private[spark] abstract class EventLoop[E](name: String) extends Logging {
 
     override def run(): Unit = {
       try {
+        // 从LinkedBlockingDeque阻塞队列中取信息
         while (!stopped.get) {
           val event = eventQueue.take()
           try {
+            // 调用onReceive(event)方法，该方法是由子类DAGSchedulerEventProcessLoop实现的
             onReceive(event)
           } catch {
             case NonFatal(e) =>

@@ -285,7 +285,7 @@ private[spark] class DAGScheduler(
 
   private val messageScheduler =
     ThreadUtils.newDaemonSingleThreadScheduledExecutor("dag-scheduler-message")
-
+  // 在构造方法中还创建了一个DAGScheduler对象，这个类的任务就是用来划分Stage任务的，构造方法初始化了
   private[spark] val eventProcessLoop = new DAGSchedulerEventProcessLoop(this)
   taskScheduler.setDAGScheduler(this)
 
@@ -905,6 +905,7 @@ private[spark] class DAGScheduler(
     assert(partitions.nonEmpty)
     val func2 = func.asInstanceOf[(TaskContext, Iterator[_]) => _]
     val waiter = new JobWaiter[U](this, jobId, partitions.size, resultHandler)
+    // 往任务队列中加入一个JobSubmitted类型的任务，eventProcessLoop是在构造任务中就初始化好的事件总线对象，内部有一个线程不断的轮询队列中的任务
     eventProcessLoop.post(JobSubmitted(
       jobId, rdd, func2, partitions.toArray, callSite, waiter,
       Utils.cloneProperties(properties)))
@@ -933,6 +934,7 @@ private[spark] class DAGScheduler(
       resultHandler: (Int, U) => Unit,
       properties: Properties): Unit = {
     val start = System.nanoTime
+    // 提交任务
     val waiter = submitJob(rdd, func, partitions, callSite, resultHandler, properties)
     ThreadUtils.awaitReady(waiter.completionFuture, Duration.Inf)
     waiter.completionFuture.value.get match {
@@ -1194,6 +1196,17 @@ private[spark] class DAGScheduler(
     listenerBus.post(SparkListenerTaskGettingResult(taskInfo))
   }
 
+  /**
+   * 调用了newStage进行任务的划分，该方法是划分任务的核心方法，划分任务的根据最后一个依赖关系作为开始，通过递归，将每个宽依赖作为切分Stage的依据
+   * 切分Stage的过程是流程中的一环，当任务切分完毕后，代码继续执行来到submitStage（finalStage）
+   * @param jobId
+   * @param finalRDD
+   * @param func
+   * @param partitions
+   * @param callSite
+   * @param listener
+   * @param properties
+   */
   private[scheduler] def handleJobSubmitted(jobId: Int,
       finalRDD: RDD[_],
       func: (TaskContext, Iterator[_]) => _,
@@ -1205,6 +1218,7 @@ private[spark] class DAGScheduler(
     try {
       // New stage creation may throw an exception if, for example, jobs are run on a
       // HadoopRDD whose underlying HDFS files have been deleted.
+      // 最终的Stage
       finalStage = createResultStage(finalRDD, func, partitions, jobId, callSite)
     } catch {
       case e: BarrierJobSlotsNumberCheckFailed =>
@@ -1258,6 +1272,7 @@ private[spark] class DAGScheduler(
     listenerBus.post(
       SparkListenerJobStart(job.jobId, jobSubmissionTime, stageInfos,
         Utils.cloneProperties(properties)))
+    // 以递归的方式提交stage
     submitStage(finalStage)
   }
 
@@ -1316,6 +1331,7 @@ private[spark] class DAGScheduler(
         logDebug("missing: " + missing)
         if (missing.isEmpty) {
           logInfo("Submitting " + stage + " (" + stage.rdd + "), which has no missing parents")
+          // 提交任务，将每一个Stage和jobId传入
           submitMissingTasks(stage, jobId.get)
         } else {
           for (parent <- missing) {
@@ -1530,6 +1546,10 @@ private[spark] class DAGScheduler(
     if (tasks.nonEmpty) {
       logInfo(s"Submitting ${tasks.size} missing tasks from $stage (${stage.rdd}) (first 15 " +
         s"tasks are for partitions ${tasks.take(15).map(_.partitionId)})")
+
+      /**
+       * 创建了一个TaskSet对象，将所有任务的信息封装，包括task任务列表，stageId,任务id，分区数参数等
+       */
       taskScheduler.submitTasks(new TaskSet(
         tasks.toArray, stage.id, stage.latestInfo.attemptNumber, jobId, properties,
         stage.resourceProfileId))
@@ -2466,6 +2486,10 @@ private[spark] class DAGScheduler(
   eventProcessLoop.start()
 }
 
+/**
+ * 是一个事件总线对象，用来负责任务的分发，在构造方法eventProcessloop.start被调用，该方法是父类EventLoop的start
+ * @param dagScheduler
+ */
 private[scheduler] class DAGSchedulerEventProcessLoop(dagScheduler: DAGScheduler)
   extends EventLoop[DAGSchedulerEvent]("dag-scheduler-event-loop") with Logging {
 
@@ -2484,7 +2508,11 @@ private[scheduler] class DAGSchedulerEventProcessLoop(dagScheduler: DAGScheduler
   }
 
   private def doOnReceive(event: DAGSchedulerEvent): Unit = event match {
+    // 从eventProcessLoop获取到任务队列的JobSubmitted类型的任务
+    // 这个地方是从RDD.collect开始进行，然后sc.rubJob-》dagscheduler.runjob
+    // -> submitjob(将任务提交到eventProcessLoop的任务队列中) -> eventProcessLoop取出submitJob的任务
     case JobSubmitted(jobId, rdd, func, partitions, callSite, listener, properties) =>
+      // 调用dagScheduler来出来提交任务
       dagScheduler.handleJobSubmitted(jobId, rdd, func, partitions, callSite, listener, properties)
 
     case MapStageSubmitted(jobId, dependency, callSite, listener, properties) =>

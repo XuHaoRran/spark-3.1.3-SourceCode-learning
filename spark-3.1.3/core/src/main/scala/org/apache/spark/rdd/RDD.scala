@@ -1046,6 +1046,8 @@ abstract class RDD[T: ClassTag](
 
   /**
    * Return an array that contains all of the elements in this RDD.
+   * 当RDD经过一系列的转换Transformation方法后，最终要执行Action动作方法，这里比如调用collect方法时会将数据提交到Master上运行，任务真正的
+   * 被执行，这里的方法过程如下
    *
    * @note This method should only be used if the resulting array is expected to be small, as
    * all the data is loaded into the driver's memory.
