@@ -555,6 +555,7 @@ class SparkContext(config: SparkConf) extends Logging {
     _plugins = PluginContainer(this, _resources.asJava)
 
     // Create and start the scheduler
+    // 创建一个TaskSchedulerImpl和StandaloneSchedulerBackend的实例，
     val (sched, ts) = SparkContext.createTaskScheduler(this, master, deployMode)
     _schedulerBackend = sched
     _taskScheduler = ts
@@ -577,6 +578,8 @@ class SparkContext(config: SparkConf) extends Logging {
 
     // start TaskScheduler after taskScheduler sets DAGScheduler reference in DAGScheduler's
     // constructor
+    // 调用的是taskSchedulerImpl的start方法
+    // taskscheduler启动的SchedulerBackend
     _taskScheduler.start()
 
     _applicationId = _taskScheduler.applicationId()
@@ -2869,6 +2872,7 @@ object SparkContext extends Logging {
   /**
    * Create a task scheduler based on a given master URL.
    * Return a 2-tuple of the scheduler backend and the task scheduler.
+   * 基于给定的主URL创建任务调度器，返回一个二元调度程序的后台和任务调度
    */
   private def createTaskScheduler(
       sc: SparkContext,
@@ -2877,6 +2881,7 @@ object SparkContext extends Logging {
     import SparkMasterRegex._
 
     // When running locally, don't try to re-execute tasks on failure.
+    // 当在本地运行时，不要试图在失败时重新执行任务
     val MAX_LOCAL_TASK_FAILURES = 1
 
     // Ensure that default executor's resources satisfies one or more tasks requirement.
@@ -2900,6 +2905,7 @@ object SparkContext extends Logging {
         (backend, scheduler)
 
       case LOCAL_N_REGEX(threads) =>
+        // local[*]估计机器上的核数:local[N]精确地使用N个线程
         def localCpuCount: Int = Runtime.getRuntime.availableProcessors()
         // local[*] estimates the number of cores on the machine; local[N] uses exactly N threads.
         val threadCount = if (threads == "*") localCpuCount else threads.toInt
@@ -2924,6 +2930,12 @@ object SparkContext extends Logging {
         (backend, scheduler)
 
       case SPARK_REGEX(sparkUrl) =>
+        // 在实际生产环境下，我们都是用集群模式，即以spark://开头，此时在程序运行时，
+        // 框架会创建一个TaskSchedulerImpl和StandaloneSchedulerBackend的实例，
+        // 在这个过程中也会初始化taskscheduler，把StandaloneSchedulerBackend的实例对象作为参数传入。
+        // StandaloneSchedulerBackend被TaskSchedulerImpl管理，
+        // 最后返回TaskScheduler和StandaloneSchdeulerBackend
+        // 。
         val scheduler = new TaskSchedulerImpl(sc)
         val masterUrls = sparkUrl.split(",").map("spark://" + _)
         val backend = new StandaloneSchedulerBackend(scheduler, sc, masterUrls)
@@ -2931,6 +2943,7 @@ object SparkContext extends Logging {
         (backend, scheduler)
 
       case LOCAL_CLUSTER_REGEX(numWorkers, coresPerWorker, memoryPerWorker) =>
+        // 确认请求的内存<=memoryPerSlave，否则Spark将会挂起
         checkResourcesPerTask(coresPerWorker.toInt)
         // Check to make sure memory requested <= memoryPerWorker. Otherwise Spark will just hang.
         val memoryPerWorkerInt = memoryPerWorker.toInt
@@ -2991,15 +3004,20 @@ object SparkContext extends Logging {
 
 /**
  * A collection of regexes for extracting information from the master string.
+ * 从master字符传中根据匹配正则表达式适配master信息
  */
 private object SparkMasterRegex {
   // Regular expression used for local[N] and local[*] master formats
+  // 正则表达式local[N]和local[*]用于master格式
   val LOCAL_N_REGEX = """local\[([0-9]+|\*)\]""".r
   // Regular expression for local[N, maxRetries], used in tests with failing tasks
+  // 正则表达式local[NmaxRetries]用于失败任务的测试
   val LOCAL_N_FAILURES_REGEX = """local\[([0-9]+|\*)\s*,\s*([0-9]+)\]""".r
   // Regular expression for simulating a Spark cluster of [N, cores, memory] locally
+  // 正则表达式用于模拟Spark 本地集群[Ncoresmemory]
   val LOCAL_CLUSTER_REGEX = """local-cluster\[\s*([0-9]+)\s*,\s*([0-9]+)\s*,\s*([0-9]+)\s*]""".r
   // Regular expression for connecting to Spark deploy clusters
+  // 用于连接到Spark部署集群的正则表达式
   val SPARK_REGEX = """spark://(.*)""".r
   // Regular expression for connecting to kubernetes clusters
   val KUBERNETES_REGEX = """k8s://(.*)""".r

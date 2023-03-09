@@ -59,6 +59,10 @@ private[spark] class StandaloneAppClient(
   private val appId = new AtomicReference[String]
   private val registered = new AtomicBoolean(false)
 
+  /**
+   * ClientEndpoint是一个RpcEndPoint，首先调用自己的onStart方法，接下来向Master注册。
+   * @param rpcEnv
+   */
   private class ClientEndpoint(override val rpcEnv: RpcEnv) extends ThreadSafeRpcEndpoint
     with Logging {
 
@@ -84,6 +88,8 @@ private[spark] class StandaloneAppClient(
 
     override def onStart(): Unit = {
       try {
+        // 调用registerWithMaster方法，从registerWithMaster调用tryRegisterAllMasters，
+        // 开一条新的线程来注册，然后发送一条信息（RegisterApplication的case class）给Master。
         registerWithMaster(1)
       } catch {
         case e: Exception =>
@@ -104,6 +110,7 @@ private[spark] class StandaloneAppClient(
               return
             }
             logInfo("Connecting to master " + masterAddress.toSparkURL + "...")
+            // 发送信息连接到master，准备注册，master等待接收RegisterApplication信息
             val masterRef = rpcEnv.setupEndpointRef(masterAddress, Master.ENDPOINT_NAME)
             masterRef.send(RegisterApplication(appDescription, self))
           } catch {
@@ -277,6 +284,7 @@ private[spark] class StandaloneAppClient(
 
   def start(): Unit = {
     // Just launch an rpcEndpoint; it will call back into the listener.
+    // ClientEndpoint是一个RpcEndPoint，首先调用自己的onStart方法，接下来向Master注册。
     endpoint.set(rpcEnv.setupEndpoint("AppClient", new ClientEndpoint(rpcEnv)))
   }
 

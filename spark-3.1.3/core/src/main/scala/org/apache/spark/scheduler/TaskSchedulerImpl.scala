@@ -179,7 +179,7 @@ private[spark] class TaskSchedulerImpl(
       case e: java.util.NoSuchElementException =>
         throw new SparkException(s"Unrecognized $SCHEDULER_MODE_PROPERTY: $schedulingModeConf")
     }
-
+  // 初始化TaskSchedulerImpl时首先是创建一个Pool来初定义资源分布的模式Scheduling Mode，默认是先进先出（FIFO）的模式
   val rootPool: Pool = new Pool("", schedulingMode, 0, 0)
 
   // This is a var so that we can reset it for testing purposes.
@@ -223,6 +223,7 @@ private[spark] class TaskSchedulerImpl(
   def newTaskId(): Long = nextTaskId.getAndIncrement()
 
   override def start(): Unit = {
+
     backend.start()
 
     if (!isLocal && conf.get(SPECULATION_ENABLED)) {

@@ -63,17 +63,24 @@ private[spark] class StandaloneSchedulerBackend(
   private val totalExpectedCores = maxCores.getOrElse(0)
   private val defaultProf = sc.resourceProfileManager.defaultResourceProfile
 
+  /**
+   * Master发指令给Worker去启动Executor所有的进程时加载的Main方法所在的入口类就是command中的CoarseGrainedExecutorBackend，
+   * 在CoarseGrainedExecutorBackend中启动Executor（Executor是先注册，再实例化），Executor通过线程池并发执行Task，然后再调用它的run方法。
+   */
   override def start(): Unit = {
     super.start()
 
     // SPARK-21159. The scheduler backend should only try to connect to the launcher when in client
     // mode. In cluster mode, the code that submits the application to the Master needs to connect
     // to the launcher instead.
+    // 只有在client模式下scheduler backend 才去连接launcher
+    // 在cluster 集群下，应用程序应提交给 Master
     if (sc.deployMode == "client") {
       launcherBackend.connect()
     }
 
     // The endpoint for executors to talk to us
+    // executors节点与用户通信的端点
     val driverUrl = RpcEndpointAddress(
       sc.conf.get(config.DRIVER_HOST_ADDRESS),
       sc.conf.get(config.DRIVER_PORT),
@@ -95,6 +102,8 @@ private[spark] class StandaloneSchedulerBackend(
     // When testing, expose the parent class path to the child. This is processed by
     // compute-classpath.{cmd,sh} and makes all needed jars available to child processes
     // when the assembly is built with the "*-provided" profiles enabled.
+    // 测试时，将父类路径公开给子对象，由compute-classpath.{cmd.sh}计算路径
+    // 当“*-provided”配置启用，子进程可使用所有需要的jar包
     val testingClassPath =
       if (sys.props.contains(IS_TESTING.key)) {
         sys.props("java.class.path").split(java.io.File.pathSeparator).toSeq
@@ -103,6 +112,7 @@ private[spark] class StandaloneSchedulerBackend(
       }
 
     // Start executors with a few necessary configs for registering with the scheduler
+    // 使用注册调度必要的一些配置启动executors
     val sparkJavaOpts = Utils.sparkJavaOpts(conf, SparkConf.isExecutorStartupConf)
     val javaOpts = sparkJavaOpts ++ extraJavaOpts
     val command = Command("org.apache.spark.executor.CoarseGrainedExecutorBackend",
@@ -111,6 +121,8 @@ private[spark] class StandaloneSchedulerBackend(
     val coresPerExecutor = conf.getOption(config.EXECUTOR_CORES.key).map(_.toInt)
     // If we're using dynamic allocation, set our initial executor limit to 0 for now.
     // ExecutorAllocationManager will send the real initial limit to the Master later.
+    // 如果使用动态分配，现在将初始执行器限制设置为 0
+    // ExecutorA1locationManager将实际的初始限制发送给 Master 节点
     val initialExecutorLimit =
       if (Utils.isDynamicAllocationEnabled(conf)) {
         Some(0)
@@ -122,6 +134,7 @@ private[spark] class StandaloneSchedulerBackend(
     val appDesc = ApplicationDescription(sc.appName, maxCores, sc.executorMemory, command,
       webUrl, sc.eventLogDir, sc.eventLogCodec, coresPerExecutor, initialExecutorLimit,
       resourceReqsPerExecutor = executorResourceReqs)
+    // 创建一个很重要的对象，然后调用它的client.start方法
     client = new StandaloneAppClient(sc.env.rpcEnv, masters, appDesc, this, conf)
     client.start()
     launcherBackend.setState(SparkAppHandle.State.SUBMITTED)

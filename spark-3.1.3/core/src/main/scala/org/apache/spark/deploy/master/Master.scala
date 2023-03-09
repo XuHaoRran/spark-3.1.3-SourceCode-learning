@@ -225,6 +225,10 @@ private[deploy] class Master(
     self.send(RevokedLeadership)
   }
 
+  /**
+   * master接收远处调用信息的方法的了啊
+   * @return
+   */
   override def receive: PartialFunction[Any, Unit] = {
     case ElectedLeader =>
       val (storedApps, storedDrivers, storedWorkers) = persistenceEngine.readPersistedData(rpcEnv)
@@ -295,7 +299,7 @@ private[deploy] class Master(
             + workerAddress))
         }
       }
-
+    // Master收到RegisterApplication信息后便开始注册，注册后再次调用schedule()方法。
     case RegisterApplication(description, driver) =>
       // TODO Prevent repeated registrations from some driver
       if (state == RecoveryState.STANDBY) {

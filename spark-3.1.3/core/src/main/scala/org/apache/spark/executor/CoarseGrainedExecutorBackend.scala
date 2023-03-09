@@ -409,6 +409,7 @@ private[spark] object CoarseGrainedExecutorBackend extends Logging {
       Utils.checkHost(arguments.hostname)
 
       // Bootstrap to fetch the driver's Spark properties.
+      // bootstrap取抓取driver节点的spark属性
       val executorConf = new SparkConf
       val fetcher = RpcEnv.create(
         "driverPropsFetcher",
@@ -431,15 +432,19 @@ private[spark] object CoarseGrainedExecutorBackend extends Logging {
           }
         }
       }
-
-      val cfg = driver.askSync[SparkAppConfig](RetrieveSparkAppConfig(arguments.resourceProfileId))
+      // CoarseGrainedExecutorBackend通过消息循环体向driver发送RetrieveSparkAppConfig消息，RetrieveSparkAppConfig是一个case object。
+      // Driver端的CoarseGrainedSchedulerBackend消息循环体收到消息以后，将Spark的属性信息sparkProperties及加密key等内容封装成SparkAppConfig消息，
+      // 将SparkAppConfig消息再回复给CoarseGrainedExecutorBackend。
+      val cfg : SparkAppConfig = driver.askSync[SparkAppConfig](RetrieveSparkAppConfig(arguments.resourceProfileId))
       val props = cfg.sparkProperties ++ Seq[(String, String)](("spark.app.id", arguments.appId))
       fetcher.shutdown()
 
       // Create SparkEnv using properties we fetched from the driver.
+      // 从dirver节点获取属性信息，创建SparkEnv
       val driverConf = new SparkConf()
       for ((key, value) <- props) {
         // this is required for SSL in standalone mode
+        // 这时SSL在独立模式下需要的
         if (SparkConf.isExecutorStartupConf(key)) {
           driverConf.setIfMissing(key, value)
         } else {
@@ -503,6 +508,7 @@ private[spark] object CoarseGrainedExecutorBackend extends Logging {
           argv = tail
         case ("--worker-url") :: value :: tail =>
           // Worker url is used in spark standalone mode to enforce fate-sharing with worker
+          // worker url用于spark standalone模式，以加强与worker的分享
           workerUrl = Some(value)
           argv = tail
         case ("--user-class-path") :: value :: tail =>
