@@ -253,6 +253,7 @@ abstract class AbstractCommandBuilder {
     if (path == null && "1".equals(getenv("SPARK_TESTING"))) {
       path = System.getProperty("spark.test.home");
     }
+    // SPARK_HOME需要提前在环境中配置，不然在Spark本地伪分布式开发模式会出错！！！
     checkState(path != null,
       "Spark home not found; set it explicitly or use the SPARK_HOME environment variable.");
     return path;

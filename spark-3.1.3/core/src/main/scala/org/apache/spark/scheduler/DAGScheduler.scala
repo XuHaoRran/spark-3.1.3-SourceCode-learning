@@ -205,6 +205,9 @@ private[spark] class DAGScheduler(
    * locations where that RDD partition is cached.
    *
    * All accesses to this map should be guarded by synchronizing on it (see SPARK-4454).
+   *
+   * <p>getCacheLocs中的cacheLocs是一个HashMap，包含每个RDD的分区上的缓存位置信息。
+   * map的key值是RDD的ID，Value是由分区编号索引的数组。每个数组值是RDD分区缓存位置的集合
    */
   private val cacheLocs = new HashMap[Int, IndexedSeq[Seq[TaskLocation]]]
 
@@ -399,6 +402,7 @@ private[spark] class DAGScheduler(
     // Note: this doesn't use `getOrElse()` because this method is called O(num tasks) times
     if (!cacheLocs.contains(rdd.id)) {
       // Note: if the storage level is NONE, we don't need to get locations from block manager.
+      // 注:如果存储级别为 NONE，我们不需要从块管理器获取位置信息
       val locs: IndexedSeq[Seq[TaskLocation]] = if (rdd.getStorageLevel == StorageLevel.NONE) {
         IndexedSeq.fill(rdd.partitions.length)(Nil)
       } else {
@@ -408,6 +412,7 @@ private[spark] class DAGScheduler(
           bms.map(bm => TaskLocation(bm.host, bm.executorId))
         }
       }
+
       cacheLocs(rdd.id) = locs
     }
     cacheLocs(rdd.id)
@@ -1311,6 +1316,7 @@ private[spark] class DAGScheduler(
       job.jobId, callSite.shortForm, partitions.length))
     logInfo("Final stage: " + finalStage + " (" + finalStage.name + ")")
     logInfo("Parents of final stage: " + finalStage.parents)
+    // 根据finalStage找父Stage，如果有父Stage，就直接返回，如果没有父Stage，就进行创建
     logInfo("Missing parents: " + getMissingParentStages(finalStage))
 
     val jobSubmissionTime = clock.getTimeMillis()
@@ -1373,18 +1379,24 @@ private[spark] class DAGScheduler(
 
   /** Submits stage, but first recursively submits any missing parents. */
   private def submitStage(stage: Stage): Unit = {
+    // activeJobForStage中获得JobID
     val jobId = activeJobForStage(stage)
+    // 如果已经定义isDefined，那就获得即将计算的Stage(getMissingParentStages)，然后进行升序排列
     if (jobId.isDefined) {
       logDebug(s"submitStage($stage (name=${stage.name};" +
         s"jobs=${stage.jobIds.toSeq.sorted.mkString(",")}))")
       if (!waitingStages(stage) && !runningStages(stage) && !failedStages(stage)) {
+//        获得即将计算的Stage，然后进行升序排序
         val missing = getMissingParentStages(stage).sortBy(_.id)
         logDebug("missing: " + missing)
+        // 已经没有missing的parents了
         if (missing.isEmpty) {
           logInfo("Submitting " + stage + " (" + stage.rdd + "), which has no missing parents")
           // 提交任务，将每一个Stage和jobId传入
           submitMissingTasks(stage, jobId.get)
         } else {
+          // 如果父Stage不为空，将循环递归调用submitStage，从后往前回溯，也就是说，只有前面的依赖的Stage计算完毕后，
+          // 后面的Stage才会运行。submitStage一直循环调用，导致的结果是父Stage的父Stage……一直回溯到最左侧的父Stage开始计算。
           for (parent <- missing) {
             submitStage(parent)
           }
@@ -1464,7 +1476,7 @@ private[spark] class DAGScheduler(
     // with this Stage
     val properties = jobIdToActiveJob(jobId).properties
     addPySparkConfigsToProperties(stage, properties)
-
+    // 表示正在运行的Stages，将当前运行的stage增加到runnningStages
     runningStages += stage
     // SparkListenerStageSubmitted should be posted before testing whether tasks are
     // serializable. If tasks are not serializable, a SparkListenerStageCompleted event
@@ -1485,9 +1497,10 @@ private[spark] class DAGScheduler(
     }
     val taskIdToLocations: Map[Int, Seq[TaskLocation]] = try {
       stage match {
-        case s: ShuffleMapStage =>
+        case s: ShuffleMapStage => // 如果是ShuffleMapStage，则从getPreferredLocs(stage.rdd, id)获取任务本地性信息
+          // partitionsToCompute获得要计算的Partitions的id
           partitionsToCompute.map { id => (id, getPreferredLocs(stage.rdd, id))}.toMap
-        case s: ResultStage =>
+        case s: ResultStage => // 则从getPreferredLocs(stage.rdd, p)获取任务本地性信息
           partitionsToCompute.map { id =>
             val p = s.partitions(id)
             (id, getPreferredLocs(stage.rdd, p))
@@ -2462,6 +2475,24 @@ private[spark] class DAGScheduler(
    *
    * This method is thread-safe and is called from both DAGScheduler and SparkContext.
    *
+   * <p>获取与特定RDD的分区关联的位置信息，该方法是线程安全的，可以从DAGScheduler和SparkContext调用
+   *
+   * <p>如果自定义RDD，那一定要写getPreferedLocations，这是RDD的五大特征之一。
+   * 例如，想让Spark运行在HBase上或者运行在一种现在还没有直接支持的数据库上面，
+   * 此时开发者需要自定义RDD。为了保证Task计算的数据本地性，最关键的方式是
+   * 必须实现RDD的getPreferedLocations。数据不动代码动，以HBase为例，
+   * Spark要操作HBase的数据，要求Spark运行在HBase所在的集群中，
+   * HBase是高速数据检索的引擎，数据在哪里，Spark也需要运行在哪里。
+   * Spark能支持各种来源的数据，核心就在于getPreferedLocations。
+   * 如果不实现getPreferedLocations，就要从数据库或HBase中将数据抓过来，
+   * 速度会很慢。
+   *
+   * <p>DAGScheduler计算数据本地性的时候巧妙地借助了RDD自身的getPreferedLocations中的数据，
+   * 最大化地优化效率，因为getPreferedLocations中表明了每个Partition的数据本地性，
+   * 虽然当前Partition可能被persist或者checkpoint，但是persist或者checkpoint默认
+   * 情况下肯定和getPreferedLocations中的Partition的数据本地性是一致的，
+   * 所以这就极大地简化了Task数据本地性算法的实现和效率的优化。
+   *
    * @param rdd whose partitions are to be looked at
    * @param partition to lookup locality information for
    * @return list of machines that are preferred by the partition
@@ -2477,13 +2508,23 @@ private[spark] class DAGScheduler(
    * This method is thread-safe because it only accesses DAGScheduler state through thread-safe
    * methods (getCacheLocs()); please be careful when modifying this method, because any new
    * DAGScheduler state accessed by it may require additional synchronization.
+   *
+   * <p>getPreferredLocsInternal是getPreferredLocs的递归实现：
+   * 这个方法是线程安全的，它只能被DAGScheduler通过线程安全方法getCacheLocs()使用。
+   *
+   * <p>getPreferredLocsInternal方法在具体算法实现的时候首先查询DAGScheduler的内存数据结构中
+   * 是否存在当前Partition的数据本地性的信息，如果有，则直接返回；如果没有，首先会调用rdd.getPreferedLocations。
+   *
    */
   private def getPreferredLocsInternal(
       rdd: RDD[_],
       partition: Int,
+      // 在visited中把当前的rdd和partition加进去，visited是一个haseset，入股存在就会出错
       visited: HashSet[(RDD[_], Int)]): Seq[TaskLocation] = {
     // If the partition has already been visited, no need to re-visit.
     // This avoids exponential path exploration.  SPARK-695
+    // 如果partition被缓存（partition被缓存是指数据已经在DAGScheduler中），
+    // 则在getCacheLocs(rdd)(partition)传入rdd和partition，获取缓存的位置信息。如果获取到缓存位置信息，就返回
     if (!visited.add((rdd, partition))) {
       // Nil has already been returned for previously visited partitions.
       return Nil
@@ -2502,6 +2543,8 @@ private[spark] class DAGScheduler(
     // If the RDD has narrow dependencies, pick the first partition of the first narrow dependency
     // that has any placement preferences. Ideally we would choose based on transfer sizes,
     // but this will do for now.
+    // 如果RDD是窄依赖，将选择第一个窄依赖的第一个分区作为位置首选项。
+    // 理想情况下，我们将基本传输大小选择
     rdd.dependencies.foreach {
       case n: NarrowDependency[_] =>
         for (inPart <- n.getParents(partition)) {
@@ -2610,7 +2653,7 @@ private[scheduler] class DAGSchedulerEventProcessLoop(dagScheduler: DAGScheduler
     case GettingResultEvent(taskInfo) =>
       dagScheduler.handleGetTaskResult(taskInfo)
 
-    case completion: CompletionEvent =>
+    case completion: CompletionEvent => // 接收完成Task的信息，dagscheduler处理Task完成后的结果
       dagScheduler.handleTaskCompletion(completion)
 
     case TaskSetFailed(taskSet, reason, exception) =>

@@ -206,6 +206,9 @@ private[spark] class TaskSchedulerImpl(
 
   def initialize(backend: SchedulerBackend): Unit = {
     this.backend = backend
+    // 根据调度模式的配置创建实现了schedulableBuilder接口的相应的实例对象
+    // 并且床架你的对象会立即调用buildPools创建相应数量的Pool存放和管理TaskSetManager的实例对象。
+    // 实现SchedulerBuilder接口的具体类都是SchedulerBuilder的内部类。
     schedulableBuilder = {
       schedulingMode match {
         case SchedulingMode.FIFO =>
@@ -223,7 +226,9 @@ private[spark] class TaskSchedulerImpl(
   def newTaskId(): Long = nextTaskId.getAndIncrement()
 
   override def start(): Unit = {
-
+    // 调用StandaloneSchedulerBackend的start方法，在StandaloneSchedulerBackend的start方法中，
+    // 会最终注册应用程序AppClient。 TaskSchedulerImpl的start方法中还会
+    // 根据配置判断是否周期性地检查任务的推测执行。
     backend.start()
 
     if (!isLocal && conf.get(SPECULATION_ENABLED)) {
@@ -244,6 +249,8 @@ private[spark] class TaskSchedulerImpl(
       + "resource profile " + taskSet.resourceProfileId)
     this.synchronized {
       // 创建TaskSetManager保存了taskSet任务列表
+      // TaskSetManager对其生命周期进行管理，当TaskSchedulerImpl得到Worker节点上的Executor计算资源的时候，
+      // 会通过TaskSetManager发送具体的Task到Executor上执行计算。
       val manager = createTaskSetManager(taskSet, maxTaskFailures)
       val stage = taskSet.stageId
       val stageTaskSets =
@@ -258,11 +265,26 @@ private[spark] class TaskSchedulerImpl(
       // and somehow it has missing map outputs, then DAGScheduler will resubmit it and create a
       // TSM3 for it. As a stage can't have more than one active task set managers, we must mark
       // TSM2 as zombie (it actually is).
+      // 在添加新任务时，将此阶段的所有现有任务集管理器TaskSetManagers 标记为zombi，
+      // 这是处理极端情况所必需的。假设一个 stage 有 10个分区，
+      // 2个分区任务集管理器TaskSetManagers:TSM1(zombie)和 TSM2(active)。
+      // TSM1的10个分区的任务都运行完成了。TSM2 完成了分区 1-9 的任务，
+      // 认为它仍然活跃，因为分区 10 还没有完成。但是，DAGScheduler
+      // 获取到所有 10 个分区完成任务的事件，并认为该阶段已完成。
+      // 如果是洗牌阶段shuffle不知何故缺少映射输出，DAGScheduler
+      // 将重新提交它并创建一个TSM3。由于一个阶段不能有多个活动任务集管理器，
+      // 因此必须标记TSM2是zombie(实际上是)。
       stageTaskSets.foreach { case (_, ts) =>
         ts.isZombie = true
       }
       // 将任务加入调度池
       stageTaskSets(taskSet.stageAttemptId) = manager
+      // 创建了TaskSetManager后，非常关键的一行是则合格代码
+      // SchedulableBuilder会确定TaskSetManager的调度顺序，
+      // 然后按照TaskSetManager的locality aware来确定每个Task具体运行在哪个ExecutorBackend中。
+      //
+      // 两种调度模式FIFOSchedulableBuilder、FairSchedulableBuilder
+      // 这里的调度策略可以通过spark-env.sh中的spark.sheduler.mode进行具体设置，默认是FIFO的方式
       schedulableBuilder.addTaskSetManager(manager, manager.taskSet.properties)
 
       if (!isLocal && !hasReceivedTask) {
@@ -285,9 +307,24 @@ private[spark] class TaskSchedulerImpl(
   }
 
   // Label as private[scheduler] to allow tests to swap in different task set managers if necessary
+  // TaskSchedulerImpl启动后，就可以接收DAGScheduler的submitMissingTasks方法提交过来的TaskSet进行进一步处理。
+  // TaskSchedulerImpl在submitTasks中初始化一个TaskSetManager，对其生命周期进行管理，
+  // 当TaskSchedulerImpl得到Worker节点上的Executor计算资源的时候，
+  // 会通过TaskSetManager发送具体的Task到Executor上执行计算。
+  //
+  // 如果Task执行过程中有错误导致失败，会调用TaskSetManager来处理Task失败的情况，
+  // 进而通知DAGScheduler结束当前的Task。TaskSetManager会将失败的Task再次添加到待执行Task队列中。
+  // Spark Task允许失败的次数默认是4次，在TaskSchedulerImpl初始化的时候，
+  // 通过spark.task.maxFailures设置该值。
+  //
+  // 如果Task执行完毕，执行的结果会反馈给TaskSetManager，由TaskSetManager通知DAGScheduler，
+  // DAGScheduler根据是否还存在待执行的Stage，继续迭代提交对应的TaskSet给TaskScheduler去执行，或者输出Job的结果。
+
+
   private[scheduler] def createTaskSetManager(
       taskSet: TaskSet,
       maxTaskFailures: Int): TaskSetManager = {
+    // 创建一个TaskSetManager
     new TaskSetManager(this, taskSet, maxTaskFailures, healthTrackerOpt, clock)
   }
 
@@ -498,12 +535,29 @@ private[spark] class TaskSchedulerImpl(
    * Called by cluster manager to offer resources on workers. We respond by asking our active task
    * sets for tasks in order of priority. We fill each node with tasks in a round-robin manner so
    * that tasks are balanced across the cluster.
+   *
+   * <p>标记每一个活着的slave，记录它的主机名，并跟踪是否增加了新的Executor。感知集群动态资源的状况。
+   *
+   * <p>offers是集群有哪些可用的资源，循环遍历offers，hostToExecutors是否包含当前的host，如果不包含，就将Executor加进去。
+   * 因为这里是最新请求，获取机器有哪些可用的计算资源。
+   *
+   * <p>getRackForHost是数据本地性，默认情况下，在一个机架Rack里面，生产环境中可能分若干个机架Rack。
+   *
+   * <p>重要的一行代码val shuffledOffers =shuffleOffers(filteredOffers)：将可用的计算资源打散。
+   *
+   * <p>tasks将获得洗牌后的shuffledOffers通过map转换，对每个worker用了ArrayBuffer[TaskDescription]，
+   * 每个
+   * Executor可以放几个[TaskDescription]，就可以运行多少个任务。即多少个Cores，
+   * 就可以分配多少任务。ArrayBuffer是一个一维数组，数组的长度根据当前机器的CPU个数决定。
    */
   def resourceOffers(
       offers: IndexedSeq[WorkerOffer],
       isAllFreeResources: Boolean = true): Seq[Seq[TaskDescription]] = synchronized {
     // Mark each worker as alive and remember its hostname
     // Also track if new executor is added
+
+    // 标记每一个slave节点活跃状态，记录主机名
+    // 如是新的executor 节点增加，则进行跟踪
     var newExecAvail = false
     for (o <- offers) {
       if (!hostToExecutors.contains(o.host)) {
@@ -525,6 +579,8 @@ private[spark] class TaskSchedulerImpl(
     // Before making any offers, include any nodes whose expireOnFailure timeout has expired. Do
     // this here to avoid a separate thread and added synchronization overhead, and also because
     // updating the excluded executors and nodes is only relevant when task offers are being made.
+    // 在进行任何 offers 之前，从黑名单中删除黑名单已过期的任何节点，这样做是为了
+    // 避免单独的线程和增加的同步开销，因为只有在提供任务时才更新黑名单
     healthTrackerOpt.foreach(_.applyExcludeOnFailureTimeout())
 
     val filteredOffers = healthTrackerOpt.map { healthTracker =>
@@ -538,11 +594,17 @@ private[spark] class TaskSchedulerImpl(
     // Build a list of tasks to assign to each worker.
     // Note the size estimate here might be off with different ResourceProfiles but should be
     // close estimate
+    // 创建要分配给每个 worker的任务列表
+    //
+    // ArrayBuffer[TaskDescription](o.cores / CPUS_PER_TASK)说明当前ExecutorBackend上可以分配多少个Task，
+    // 并行运行多少Task，和RDD的分区个数是两个概念：这里不是决定Task的个数，RDD的分区数在创建RDD时就已经决定了。
+    // 这里，具体任务调度是指Task分配在哪些机器上，每台机器上分配多少Task，一次能分配多少Task。
     val tasks = shuffledOffers.map(o => new ArrayBuffer[TaskDescription](o.cores / CPUS_PER_TASK))
     val availableResources = shuffledOffers.map(_.resources).toArray
     val availableCpus = shuffledOffers.map(o => o.cores).toArray
     val resourceProfileIds = shuffledOffers.map(o => o.resourceProfileId).toArray
     val sortedTaskSets = rootPool.getSortedTaskSetQueue
+    // 如果有新的可以的Executor，通过taskSet.executorAdded()加入taskSet
     for (taskSet <- sortedTaskSets) {
       logDebug("parentName: %s, name: %s, runningTasks: %s".format(
         taskSet.parent.name, taskSet.name, taskSet.runningTasks))
@@ -554,6 +616,10 @@ private[spark] class TaskSchedulerImpl(
     // Take each TaskSet in our scheduling order, and then offer it to each node in increasing order
     // of locality levels so that it gets a chance to launch local tasks on all of them.
     // NOTE: the preferredLocality order: PROCESS_LOCAL, NODE_LOCAL, NO_PREF, RACK_LOCAL, ANY
+    // 把每个 TaskSet 放在调度顺序中，然后提供它的每个节点本地性级别的递增顺序，以便它有
+    // 机会启动所有任务的本地任务
+    // 注意:数据本地性优先级别顺序: PROCESS_LOCAL NODE_LOCAL NO_PREF机器本地性 RACK_LOCAL
+    // ANY
     for (taskSet <- sortedTaskSets) {
       // we only need to calculate available slots if using barrier scheduling, otherwise the
       // value is -1
@@ -570,15 +636,19 @@ private[spark] class TaskSchedulerImpl(
         -1
       }
       // Skip the barrier taskSet if the available slots are less than the number of pending tasks.
+      // 如果可用插槽少于挂起任务的数量，则跳过屏障任务集
       if (taskSet.isBarrier && numBarrierSlotsAvailable < taskSet.numTasks) {
         // Skip the launch process.
+        // 跳过启动过程
         // TODO SPARK-24819 If the job requires more slots than available (both busy and free
         // slots), fail the job on submit.
+        // spark-24819如果作业需要的插槽多于可用插槽(警忙和空闲槽),提交时作业失败
         logInfo(s"Skip current round of resource offers for barrier stage ${taskSet.stageId} " +
           s"because the barrier taskSet requires ${taskSet.numTasks} slots, while the total " +
           s"number of available slots is $numBarrierSlotsAvailable.")
       } else {
         var launchedAnyTask = false
+        //  记录所有executor ID分配的障碍任务
         var noDelaySchedulingRejects = true
         var globalMinLocality: Option[TaskLocality] = None
         // Record all the executor IDs assigned barrier tasks on.
@@ -625,6 +695,14 @@ private[spark] class TaskSchedulerImpl(
               // If there are no idle executors and dynamic allocation is enabled, then we would
               // notify ExecutorAllocationManager to allocate more executors to schedule the
               // unschedulable tasks else we will abort immediately.
+
+              // 如果任务集是不可计算的 将尝试查找现有的空闲黑名单executor 如果找不到就立即中止
+              // 否则就杀掉空闲的executor 如果它没有在超时内调度任务 启动一个中止程序
+              // 如果无法从任务集中调度任何任务 它将中止任务集 * 注 我们跟踪每个任务集的可调度性
+              // 而不是每个任务的可调度性 * 注2: 当存在多个空闲黑名单executors 并且启用动态分配时 任务集仍然可以中止
+              // 当一个被杀死的空闲executor 没有及时被ExecutorAllocationManager
+              // 替换时就会发生这种情况因为它依赖于挂起的任务
+              // 并且在空闲超时时不会杀死executors 从而导致过期并中止任务集
               executorIdToRunningTaskIds.find(x => !isExecutorBusy(x._1)) match {
                 case Some ((executorId, _)) =>
                   if (!unschedulableTaskSetToExpiryTime.contains(taskSet)) {
@@ -659,6 +737,9 @@ private[spark] class TaskSchedulerImpl(
           // Note: It is theoretically possible that a taskSet never gets scheduled on a
           // non-excluded executor and the abort timer doesn't kick in because of a constant
           // submission of new TaskSets. See the PR for more details.
+
+          // 只要有一个未列入黑名单的executor，就要推迟杀掉任何任务集。可用于从任何活动任务集中调度任务。这确保了工作可以取得进展。
+          // 注意:理论上，任务集可能永远不会在非黑名单executor 被调度，并且由于不断提交新的任务集，中止计时器不会启动
           if (unschedulableTaskSetToExpiryTime.nonEmpty) {
             logInfo("Clearing the expiry times for all unschedulable taskSets as a task was " +
               "recently scheduled.")
@@ -674,6 +755,7 @@ private[spark] class TaskSchedulerImpl(
           // Check whether the barrier tasks are partially launched.
           // TODO SPARK-24818 handle the assert failure case (that can happen when some locality
           // requirements are not fulfilled, and we should revert the launched tasks).
+          // 检查屏障任务是否部分启动。 SPARK-24818 处理断言失败案例(当某些位置没有满足需求，应该恢复已启动的任务)
           if (addressesWithDescs.size != taskSet.numTasks) {
             val errorMsg =
               s"Fail resource offers for barrier stage ${taskSet.stageId} because only " +
@@ -688,11 +770,14 @@ private[spark] class TaskSchedulerImpl(
           }
 
           // materialize the barrier coordinator.
+          // 实现屏障调度
           maybeInitBarrierCoordinator()
 
           // Update the taskInfos into all the barrier task properties.
+          // 将taskInfos更新到所有屏障任务属性中
           val addressesStr = addressesWithDescs
             // Addresses ordered by partitionId
+              // 按分区ID排序
             .sortBy(_._2.partitionId)
             .map(_._1)
             .mkString(",")
@@ -706,6 +791,7 @@ private[spark] class TaskSchedulerImpl(
 
     // TODO SPARK-24823 Cancel a job that contains barrier stage(s) if the barrier tasks don't get
     // launched within a configured time.
+    // 如果屏障任务未在配置的时间内启动，则取消包含屏障阶段的作业
     if (tasks.nonEmpty) {
       hasLaunchedTask = true
     }
@@ -776,8 +862,10 @@ private[spark] class TaskSchedulerImpl(
               cleanupTaskState(tid)
               taskSet.removeRunningTask(tid)
               if (state == TaskState.FINISHED) {
+                // 处理task完成的信息
                 taskResultGetter.enqueueSuccessfulTask(taskSet, tid, serializedData)
               } else if (Set(TaskState.FAILED, TaskState.KILLED, TaskState.LOST).contains(state)) {
+                // 处理task的FAILED，KILLED,LOST的信息
                 taskResultGetter.enqueueFailedTask(taskSet, tid, state, serializedData)
               }
             }
@@ -834,15 +922,24 @@ private[spark] class TaskSchedulerImpl(
     taskSetManager.handleSuccessfulTask(tid, taskResult)
   }
 
+  /**
+   * 处理Task执行失败的信息
+   * @param taskSetManager
+   * @param tid
+   * @param taskState
+   * @param reason
+   */
   def handleFailedTask(
       taskSetManager: TaskSetManager,
       tid: Long,
       taskState: TaskState,
       reason: TaskFailedReason): Unit = synchronized {
+    // TaskSetManager的handleFailedTask方法会将失败的Task再次添加到待执行Task队列中
     taskSetManager.handleFailedTask(tid, taskState, reason)
     if (!taskSetManager.isZombie && !taskSetManager.someAttemptSucceeded(tid)) {
       // Need to revive offers again now that the task set manager state has been updated to
       // reflect failed tasks that need to be re-run.
+      // 调用CoraseGrainedSchedulerBackend的revivieOffers方法给重新执行的Task获取资源
       backend.reviveOffers()
     }
   }

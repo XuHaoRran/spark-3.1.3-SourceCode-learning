@@ -653,6 +653,12 @@ private[spark] class Executor(
         executorSource.SUCCEEDED_TASKS.inc(1L)
         setTaskFinishedAndClearInterruptStatus()
         plugins.foreach(_.onTaskSucceeded())
+
+        /**
+         * Task执行完毕，执行的结果会反馈给TaskSetManager，由TaskSetManager通知DAGScheduler，
+         * DAGScheduler根据是否还存在待执行的Stage，继续迭代提交对应的TaskSet给TaskScheduler去执行，
+         * 或者输出Job的结果
+         */
         execBackend.statusUpdate(taskId, TaskState.FINISHED, serializedResult)
       } catch {
         case t: TaskKilledException =>

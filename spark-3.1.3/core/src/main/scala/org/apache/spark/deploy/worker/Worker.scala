@@ -142,6 +142,7 @@ private[deploy] class Worker(
   private var decommissioned = false
   // expose for test
   private[spark] val workerId = generateWorkerId()
+  // 罪恶之源，获取SPARK_HOME的位置！！！多重项目包直接寄
   private val sparkHome =
     if (sys.props.contains(IS_TESTING.key)) {
       assert(sys.props.contains("spark.test.home"), "spark.test.home is not set!")

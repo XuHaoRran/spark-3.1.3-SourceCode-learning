@@ -55,7 +55,7 @@ private[spark] class TaskSetManager(
     sched: TaskSchedulerImpl,
     val taskSet: TaskSet,
     val maxTaskFailures: Int,
-    healthTracker: Option[HealthTracker] = None,
+    healthTracker: Option[HealthTracker] = None, // 黑名单列表executors及nodes的追踪
     clock: Clock = new SystemClock()) extends Schedulable with Logging {
 
   private val conf = sched.sc.conf
@@ -780,6 +780,7 @@ private[spark] class TaskSetManager(
     // "result.value()" in "TaskResultGetter.enqueueSuccessfulTask" before reaching here.
     // Note: "result.value()" only deserializes the value when it's called at the first time, so
     // here "result.value()" just returns the value and won't block other threads.
+    // DAGScheduler.taskEnded
     sched.dagScheduler.taskEnded(tasks(index), Success, result.value(), result.accumUpdates,
       result.metricPeaks, info)
     maybeFinishTaskSet()
@@ -802,6 +803,8 @@ private[spark] class TaskSetManager(
    * Marks the task as failed, re-adds it to the list of pending tasks, and notifies the
    * DAG Scheduler.
    * Spark计算过程中，计算内部某个Task任务出现失败，底层调度器会对此Task进行若干次重试（默认4次）
+   *
+   * <p>将失败的Task再次添加到待执行Task队列中
    */
   def handleFailedTask(tid: Long, state: TaskState, reason: TaskFailedReason): Unit = {
     val info = taskInfos(tid)

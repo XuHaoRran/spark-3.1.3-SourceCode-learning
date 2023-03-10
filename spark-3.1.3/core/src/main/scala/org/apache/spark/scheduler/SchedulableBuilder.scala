@@ -42,6 +42,11 @@ private[spark] trait SchedulableBuilder {
   def addTaskSetManager(manager: Schedulable, properties: Properties): Unit
 }
 
+/**
+ * （1）FIFOSchedulableBuilder：调度模式是SchedulingMode.FIFO，使用先进先出策略调度。
+ * 先进先出（FIFO）为默认模式。在该模式下只有一个TaskSetManager池。
+ * @param rootPool
+ */
 private[spark] class FIFOSchedulableBuilder(val rootPool: Pool)
   extends SchedulableBuilder with Logging {
 
@@ -70,6 +75,9 @@ private[spark] class FairSchedulableBuilder(val rootPool: Pool, conf: SparkConf)
   val DEFAULT_MINIMUM_SHARE = 0
   val DEFAULT_WEIGHT = 1
 
+  /**
+   * 调度模式是SchedulingMode.FAIR，使用公平策略调度。
+   */
   override def buildPools(): Unit = {
     var fileData: Option[(InputStream, String)] = None
     try {

@@ -167,7 +167,9 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
      * @return
      */
     override def receive: PartialFunction[Any, Unit] = {
+      // 处理StatusUpdate信息
       case StatusUpdate(executorId, taskId, state, data, resources) =>
+        // TaskSchedulerImpl.statusUpdate, 接收从excutorbackend的信息后，更新状态信息的
         scheduler.statusUpdate(taskId, state, data.value)
         if (TaskState.isFinished(state)) {
           executorDataMap.get(executorId) match {
@@ -190,7 +192,9 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
                 s"from unknown executor with ID $executorId")
           }
         }
+        // 接收ReviveOffers消息
       case ReviveOffers =>
+        // 在makeOffers方法中首先准备好所有可以用于计算的workOffers（代表了所有可用ExecutorBackend中可以使用的Cores等信息）
         makeOffers()
 
       case KillTask(taskId, executorId, interruptThread, reason) =>
@@ -325,8 +329,10 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
     // Make fake resource offers on all executors
     private def makeOffers(): Unit = {
       // Make sure no executor is killed while some task is launching on it
+      // 确保在执行器上启动任务时没有executor 被杀死
       val taskDescs = withLock {
         // Filter out executors under killing
+        // 过滤掉已被杀死的executors节点
         val activeExecutors = executorDataMap.filterKeys(isExecutorActive)
         val workOffers = activeExecutors.map {
           case (id, executorData) =>
@@ -365,6 +371,7 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
               executorData.resourcesInfo.map { case (rName, rInfo) =>
                 (rName, rInfo.availableAddrs.toBuffer)
               }, executorData.resourceProfileId))
+          // resourceOffers由群集管理器调用提供slaves的资源，根据优先级顺序排列任务，以循环的方式填充每个节点的任务，使得集群的任务运行均衡。
           scheduler.resourceOffers(workOffers, false)
         } else {
           Seq.empty
@@ -610,6 +617,8 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
   }
 
   override def reviveOffers(): Unit = Utils.tryLogNonFatalError {
+    // 给DrviverEndpoint发送ReviveOfers消息，而ReviveOffers本身是一个空的case object对象，ReviveOffers本身是一个空的case object对象，
+    // 只是起到触发底层资源调度的作用，在有Task提交或者计算资源变动的时候，会发送ReviveOffers这个消息作为触发器。
     driverEndpoint.send(ReviveOffers)
   }
 

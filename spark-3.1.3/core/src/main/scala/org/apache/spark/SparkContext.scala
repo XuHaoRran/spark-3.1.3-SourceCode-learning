@@ -559,6 +559,7 @@ class SparkContext(config: SparkConf) extends Logging {
     val (sched, ts) = SparkContext.createTaskScheduler(this, master, deployMode)
     _schedulerBackend = sched
     _taskScheduler = ts
+    // 实例化DAGScheduler时传入当前的sparkcontext实例化对象
     _dagScheduler = new DAGScheduler(this)
     _heartbeatReceiver.ask[Boolean](TaskSchedulerIsSet)
 
@@ -2901,6 +2902,7 @@ object SparkContext extends Logging {
         checkResourcesPerTask(1)
         val scheduler = new TaskSchedulerImpl(sc, MAX_LOCAL_TASK_FAILURES, isLocal = true)
         val backend = new LocalSchedulerBackend(sc.getConf, scheduler, 1)
+        // 立刻调用initialize方法把StandaloneSchedulerBackend的实例对象传进来，从而赋值给TaskSchedulerImpl的backend
         scheduler.initialize(backend)
         (backend, scheduler)
 

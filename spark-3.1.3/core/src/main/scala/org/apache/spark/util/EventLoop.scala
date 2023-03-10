@@ -59,6 +59,7 @@ private[spark] abstract class EventLoop[E](name: String) extends Logging {
           }
         }
       } catch {
+        // 即使eventQueue不为空，退出
         case ie: InterruptedException => // exit even if eventQueue is not empty
         case NonFatal(e) => logError("Unexpected error in " + name, e)
       }
@@ -71,6 +72,7 @@ private[spark] abstract class EventLoop[E](name: String) extends Logging {
       throw new IllegalStateException(name + " has already been stopped")
     }
     // Call onStart before starting the event thread to make sure it happens before onReceive
+    // 调用onStart启动事件线程，确保其发生在onReceive方法前
     onStart()
     eventThread.start()
   }

@@ -75,6 +75,8 @@ private[spark] class CoarseGrainedExecutorBackend(
    * Map each taskId to the information about the resource allocated to it, Please refer to
    * [[ResourceInformation]] for specifics.
    * Exposed for testing only.
+   *
+   * 把每个taskId映射到有关分配给它的资源的信息
    */
   private[executor] val taskResources = new mutable.HashMap[Long, Map[String, ResourceInformation]]
 
@@ -150,6 +152,7 @@ private[spark] class CoarseGrainedExecutorBackend(
     sys.env.filterKeys(_.startsWith(prefix))
       .map(e => (e._1.substring(prefix.length).toUpperCase(Locale.ROOT), e._2)).toMap
   }
+
 
   override def receive: PartialFunction[Any, Unit] = {
     case RegisteredExecutor =>
@@ -256,7 +259,9 @@ private[spark] class CoarseGrainedExecutorBackend(
     if (TaskState.isFinished(state)) {
       taskResources.remove(taskId)
     }
+    // 匹配driver，如果有driver，即CoarseGrainedSchedulerBackend，就发信息，否则报错没有driver的信息
     driver match {
+      // 发送信息, CoarseGrainedSchedulerBackend.receive
       case Some(driverRef) => driverRef.send(msg)
       case None => logWarning(s"Drop $msg because has not yet connected to driver")
     }

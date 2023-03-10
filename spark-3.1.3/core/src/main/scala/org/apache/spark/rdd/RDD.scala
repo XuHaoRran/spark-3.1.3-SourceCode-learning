@@ -144,6 +144,16 @@ abstract class RDD[T: ClassTag](
 
   /**
    * Optionally overridden by subclasses to specify placement preferences. 它会存储每个Partition的优先位置，对于一个HDFS文件来说，就是每个Partition块的位置
+   *
+   * <p>如果自定义RDD，那一定要写getPreferedLocations，这是RDD的五大特征之一。
+   * 例如，想让Spark运行在HBase上或者运行在一种现在还没有直接支持的数据库上面，
+   * 此时开发者需要自定义RDD。为了保证Task计算的数据本地性，最关键的方式是必须实现RDD的getPreferedLocations。
+   * 数据不动代码动，以HBase为例，Spark要操作HBase的数据，要求Spark运行在HBase所在的集群中，
+   * HBase是高速数据检索的引擎，数据在哪里，Spark也需要运行在哪里。Spark能支持各种来源的数据，
+   * 核心就在于getPreferedLocations。如果不实现getPreferedLocations，
+   * 就要从数据库或HBase中将数据抓过来，
+   * 速度会很慢
+   * 。
    */
   protected def getPreferredLocations(split: Partition): Seq[String] = Nil
 

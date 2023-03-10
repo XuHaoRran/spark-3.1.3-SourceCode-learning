@@ -51,7 +51,7 @@ private[spark] class TaskDescription(
     val attemptNumber: Int,
     val executorId: String,
     val name: String,
-    val index: Int,    // Index within this task's TaskSet
+    val index: Int,    // Index within this task's TaskSet 在该任务中的TaskSet的索引
     val partitionId: Int,
     val addedFiles: Map[String, Long],
     val addedJars: Map[String, Long],
