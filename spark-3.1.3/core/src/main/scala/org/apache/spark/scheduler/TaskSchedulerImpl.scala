@@ -115,6 +115,7 @@ private[spark] class TaskSchedulerImpl(
   val STARVATION_TIMEOUT_MS = conf.getTimeAsMs("spark.starvation.timeout", "15s")
 
   // CPUs to request per task
+  // 每个任务请求的CPUs，默认就是1
   val CPUS_PER_TASK = conf.get(config.CPUS_PER_TASK)
 
   // TaskSetManagers are not thread safe, so any access to one should be synchronized
@@ -440,8 +441,10 @@ private[spark] class TaskSchedulerImpl(
           try {
             val prof = sc.resourceProfileManager.resourceProfileFromId(taskSetRpID)
             val taskCpus = ResourceProfile.getTaskCpusOrDefaultForProfile(prof, conf)
-            val (taskDescOption, didReject) =
+            val (taskDescOption, didReject) = {
+              // 通过调用TaskSetManager的resourceOffer最终确定每个Task具体运行在哪个ExecutorBackend的具体的Locality Level
               taskSet.resourceOffer(execId, host, maxLocality, taskResAssignments)
+            }
             noDelayScheduleRejects &= !didReject
             for (task <- taskDescOption) {
               tasks(i) += task
@@ -461,8 +464,10 @@ private[spark] class TaskSchedulerImpl(
                 availableResources(i)(rName).remove(0, rInfo.addresses.size)
               }
               // Only update hosts for a barrier task.
+              // 只为屏障任务更新主机
               if (taskSet.isBarrier) {
                 // The executor address is expected to be non empty.
+                // executor地址应为非空
                 addressesWithDescs += (shuffledOffers(i).address.get -> task)
               }
             }
@@ -565,6 +570,8 @@ private[spark] class TaskSchedulerImpl(
       }
       if (!executorIdToRunningTaskIds.contains(o.executorId)) {
         hostToExecutors(o.host) += o.executorId
+        // 如果有新的ExecutorBackend分配给我们的Job，
+        // 此时会调用executorAdded来获得最新的、完整的可用计算资源。
         executorAdded(o.executorId, o.host)
         executorIdToHost(o.executorId) = o.host
         executorIdToRunningTaskIds(o.executorId) = HashSet[Long]()
@@ -589,16 +596,19 @@ private[spark] class TaskSchedulerImpl(
           !healthTracker.isExecutorExcluded(offer.executorId)
       }
     }.getOrElse(offers)
-
+    // 重新洗牌所有计算资源，以寻求计算的负载均衡
     val shuffledOffers = shuffleOffers(filteredOffers)
     // Build a list of tasks to assign to each worker.
     // Note the size estimate here might be off with different ResourceProfiles but should be
     // close estimate
     // 创建要分配给每个 worker的任务列表
     //
+    // 根据每个ExecutorBackend的cores的个数声明类型为TaskDecription的ArrayBuffer数组
+    //
     // ArrayBuffer[TaskDescription](o.cores / CPUS_PER_TASK)说明当前ExecutorBackend上可以分配多少个Task，
     // 并行运行多少Task，和RDD的分区个数是两个概念：这里不是决定Task的个数，RDD的分区数在创建RDD时就已经决定了。
     // 这里，具体任务调度是指Task分配在哪些机器上，每台机器上分配多少Task，一次能分配多少Task。
+
     val tasks = shuffledOffers.map(o => new ArrayBuffer[TaskDescription](o.cores / CPUS_PER_TASK))
     val availableResources = shuffledOffers.map(_.resources).toArray
     val availableCpus = shuffledOffers.map(o => o.cores).toArray
@@ -656,6 +666,7 @@ private[spark] class TaskSchedulerImpl(
         for (currentMaxLocality <- taskSet.myLocalityLevels) {
           var launchedTaskAtCurrentMaxLocality = false
           do {
+            // 通过调用TaskSetManager的resourceOffer最终确定每个Task具体运行在哪个ExecutorBackend的具体的Locality Level
             val (noDelayScheduleReject, minLocality) = resourceOfferSingleTaskSet(
               taskSet, currentMaxLocality, shuffledOffers, availableCpus,
               availableResources, tasks, addressesWithDescs)

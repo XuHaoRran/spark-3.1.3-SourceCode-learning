@@ -79,6 +79,7 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
   // Total number of executors that are currently registered
   protected val totalRegisteredExecutors = new AtomicInteger(0)
   protected val conf = scheduler.sc.conf
+  // 默认设置是128MB
   private val maxRpcMessageSize = RpcUtils.maxMessageSizeBytes(conf)
   private val defaultAskTimeout = RpcUtils.askRpcTimeout(conf)
   // Submit tasks only after (registered resources / total expected resources)
@@ -342,9 +343,11 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
                 (rName, rInfo.availableAddrs.toBuffer)
               }, executorData.resourceProfileId)
         }.toIndexedSeq
+        // 确定了每个Task具体运行在哪个ExecutorBackend上
         scheduler.resourceOffers(workOffers, true)
       }
       if (taskDescs.nonEmpty) {
+        // 启动tasks，这些task已经在前面确定好运行在哪个ExecutorBackend上
         launchTasks(taskDescs)
       }
     }
@@ -387,6 +390,7 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
     // 遍历Tasks集合，每个Task任务序列化，发送启动Task执行信息的给Executor的onReceive方法
     private def launchTasks(tasks: Seq[Seq[TaskDescription]]): Unit = {
       for (task <- tasks.flatten) {
+        // launchTasks首先进行序列化，但序列化Task的大小不能太大，如果超过maxRpcMessageSize，则提示出错信息
         val serializedTask = TaskDescription.encode(task)
         if (serializedTask.limit() >= maxRpcMessageSize) {
           Option(scheduler.taskIdToTaskSetManager.get(task.taskId)).foreach { taskSetMgr =>
@@ -416,10 +420,13 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
 
           logDebug(s"Launching task ${task.taskId} on executor id: ${task.executorId} hostname: " +
             s"${executorData.executorHost}.")
-          // 发送launchtask任务
+          //
+          // 发送launchtask任务，发送已经序列化的Task！！！
+          //
+          // 注意，序列化的任务是小于128MB的了啊
           executorData.executorEndpoint.send(LaunchTask(new SerializableBuffer(serializedTask)))
         }
-      }
+      } 
     }
 
     // Remove a disconnected executor from the cluster
