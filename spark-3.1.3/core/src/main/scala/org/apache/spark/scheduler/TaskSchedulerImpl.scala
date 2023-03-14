@@ -1221,6 +1221,11 @@ private[spark] class TaskSchedulerImpl(
 
   override def applicationId(): String = backend.applicationId()
 
+  /**
+   * 如果集群管理器支持多个尝试，则获取此运行的尝试ID，应用程序运行在客户端模式将没有尝试ID
+   *
+   *  @return An application's Attempt ID
+   */
   override def applicationAttemptId(): Option[String] = backend.applicationAttemptId()
 
   // exposed for testing

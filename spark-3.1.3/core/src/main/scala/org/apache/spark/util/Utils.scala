@@ -278,6 +278,8 @@ private[spark] object Utils extends Logging {
     try {
       // This sporadically fails - not sure why ... !dir.exists() && !dir.mkdirs()
       // So attempting to create and then check if directory was created or not.
+      // 这偶尔会失败，不知道原因
+      // 因此，尝试创建并检查目录是否创建
       dir.mkdirs()
       if ( !dir.exists() || !dir.isDirectory) {
         logError(s"Failed to create directory " + dir)

@@ -98,7 +98,9 @@ private[spark] class CoarseGrainedExecutorBackend(
     }
     rpcEnv.asyncSetupEndpointRefByURI(driverUrl).flatMap { ref =>
       // This is a very fast action so we can use "ThreadUtils.sameThread"
+        // 将向Driver端发送RegisterExecutor消息请求注册，完成注册后
       driver = Some(ref)
+      // 向Driver发送ask请求，等待Driver回应
       ref.ask[Boolean](RegisterExecutor(executorId, self, hostname, cores, extractLogUrls,
         extractAttributes, _resources, resourceProfile.id))
     }(ThreadUtils.sameThread).onComplete {
@@ -155,9 +157,12 @@ private[spark] class CoarseGrainedExecutorBackend(
 
 
   override def receive: PartialFunction[Any, Unit] = {
+    // 成功注册至driver
     case RegisteredExecutor =>
+
       logInfo("Successfully registered with driver")
       try {
+        // 收到RegisteredExecutor消息，立即创建Executor
         executor = new Executor(executorId, hostname, env, userClassPath, isLocal = false,
           resources = _resources)
         driver.get.send(LaunchedExecutor(executorId))
@@ -170,6 +175,7 @@ private[spark] class CoarseGrainedExecutorBackend(
     // Driver节点到executors节点
     case LaunchTask(data) =>
       if (executor == null) {
+        // 先判断Executor是否为空，Executor为空，则提示错误，进程就直接退出
         exitExecutor(1, "Received LaunchTask command but executor was null")
       } else {
         // launchTask中调用了decode方法，解析读取dataIn、taskId、attemptNumber、executorId、name、index等信息，
@@ -271,6 +277,15 @@ private[spark] class CoarseGrainedExecutorBackend(
    * This function can be overloaded by other child classes to handle
    * executor exits differently. For e.g. when an executor goes down,
    * back-end may not want to take the parent process down.
+   *
+   * CoarseGrainedExecutorBackend在运行中一旦出现异常情况，将调用exitExecutor方法处理。
+   * 1.Executor向Driver注册RegisterExecutor失败。
+   * 2.Executor收到Driver的RegisteredExecutor注册成功消息以后，创建Executor实例失败。
+   * 3.Driver返回Executor注册失败消息RegisterExecutorFailed。
+   * 4.Executor收到Driver的LaunchTask启动任务消息，但是Executor为null。
+   * 5.Executor收到Driver的KillTask消息，但是Executor为null。
+   * 6.Executor和Driver失去连接。
+   *
    */
   protected def exitExecutor(code: Int,
                              reason: String,

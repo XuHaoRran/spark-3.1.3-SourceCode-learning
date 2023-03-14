@@ -155,6 +155,8 @@ private[deploy] class ExecutorRunner(
         Utils.substituteAppNExecIds(_, appId, execId.toString)
       }
       val subsCommand = appDesc.command.copy(arguments = arguments, javaOpts = subsOpts)
+      // 在ExecutorRunner中将通过CommandUtil构建一个ProcessBuilder，
+      // 调用ProcessBuilder的start方法将会以进程的方式启动org.apache.spark.executor.CoarseGrainedExecutorBackend
       val builder = CommandUtils.buildProcessBuilder(subsCommand, new SecurityManager(conf),
         memory, sparkHome.getAbsolutePath, substituteVariables)
       val command = builder.command()

@@ -37,8 +37,12 @@ fi
 
 # NOTE: This exact class name is matched downstream by SparkSubmit.
 # Any changes need to be reflected there.
+# 注：提取的类名必须和SparkSubmit的类相匹配，任何变化都需要在类中反映
+
+# Worker组件对应的类
 CLASS="org.apache.spark.deploy.worker.Worker"
 
+# 脚本的用法，其中master 参数是必选的，Worker 需要与集群的Master通信这里的master对应Master URL信息
 if [[ $# -lt 1 ]] || [[ "$@" = *--help ]] || [[ "$@" = *-h ]]; then
   echo "Usage: ./sbin/start-worker.sh <master> [options]"
   pattern="Usage:"
@@ -56,17 +60,22 @@ fi
 
 # First argument should be the master; we need to store it aside because we may
 # need to insert arguments between it and the other arguments
+# 第一个参数应该是master，先保存他，因为我们可能需要在它和其他参数之间插入参数
 MASTER=$1
 shift
 
 # Determine desired worker port
+# Worker的Web UI的端口号设置
 if [ "$SPARK_WORKER_WEBUI_PORT" = "" ]; then
   SPARK_WORKER_WEBUI_PORT=8081
 fi
 
 # Start up the appropriate number of workers on this machine.
 # quick local function to start a worker
+# 在节点上启动指定序号的worker实例
+# 快速启动worker的本地功能
 function start_instance {
+  # 指定的Worker实例的序号，一个节点上可以部署多个Worker组件，对应的多个实例
   WORKER_NUM=$1
   shift
 
@@ -78,11 +87,12 @@ function start_instance {
     PORT_NUM=$(( $SPARK_WORKER_PORT + $WORKER_NUM - 1 ))
   fi
   WEBUI_PORT=$(( $SPARK_WORKER_WEBUI_PORT + $WORKER_NUM - 1 ))
-
+  # 在和Master组件一样，Worker组件也是使用启动守护进程的spark-daemon.sh脚本来启动一个Worker实例
   "${SPARK_HOME}/sbin"/spark-daemon.sh start $CLASS $WORKER_NUM \
      --webui-port "$WEBUI_PORT" $PORT_FLAG $PORT_NUM $MASTER "$@"
 }
-
+# 一个节点上部署几个Worker组件是由SPARK_WORKER_INSTANCES环境变量控制的，默认情况下只部署一个实例，start_instance方法的
+# 第一个参数为实例的序号
 if [ "$SPARK_WORKER_INSTANCES" = "" ]; then
   start_instance 1 "$@"
 else

@@ -34,6 +34,7 @@ private[master] class MasterArguments(args: Array[String], conf: SparkConf) exte
   var propertiesFile: String = null
 
   // Check for settings in environment variables
+  // 读取启动脚本中设置的环境变量
   if (System.getenv("SPARK_MASTER_IP") != null) {
     logWarning("SPARK_MASTER_IP is deprecated, please use SPARK_MASTER_HOST")
     host = System.getenv("SPARK_MASTER_IP")
@@ -48,10 +49,11 @@ private[master] class MasterArguments(args: Array[String], conf: SparkConf) exte
   if (System.getenv("SPARK_MASTER_WEBUI_PORT") != null) {
     webUiPort = System.getenv("SPARK_MASTER_WEBUI_PORT").toInt
   }
-
+  // 命令行选项参数的解析
   parse(args.toList)
 
   // This mutates the SparkConf, so all accesses to it must be made after this line
+  // 记载SparkConf文件，所有的访问必须经过此行
   propertiesFile = Utils.loadDefaultSparkProperties(conf, propertiesFile)
 
   if (conf.contains(MASTER_UI_PORT.key)) {

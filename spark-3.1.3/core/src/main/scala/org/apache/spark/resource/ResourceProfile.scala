@@ -389,6 +389,7 @@ object ResourceProfile extends Logging {
    * cpus per task for the default profile.
    */
   private[spark] def getTaskCpusOrDefaultForProfile(rp: ResourceProfile, conf: SparkConf): Int = {
+    // 为每个任务占用CPU核的个数
     rp.getTaskCpus.getOrElse(conf.get(CPUS_PER_TASK))
   }
 

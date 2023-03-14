@@ -143,6 +143,7 @@ private[spark] abstract class WebUI(
     assert(serverInfo.isEmpty, s"Attempted to bind $className more than once!")
     try {
       val host = Option(conf.getenv("SPARK_LOCAL_IP")).getOrElse("0.0.0.0")
+      // 启用了JettyServer
       val server = startJettyServer(host, port, sslOptions, conf, name)
       handlers.foreach(server.addHandler(_, securityManager))
       serverInfo = Some(server)

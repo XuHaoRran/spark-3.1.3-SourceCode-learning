@@ -41,7 +41,7 @@ class MasterWebUI(
   val masterEndpointRef = master.self
   val killEnabled = master.conf.get(UI_KILL_ENABLED)
   val decommissionAllowMode = master.conf.get(MASTER_UI_DECOMMISSION_ALLOW_MODE)
-
+  // 初始化所有的服务器组件
   initialize()
 
   /** Initialize all components of the server. */

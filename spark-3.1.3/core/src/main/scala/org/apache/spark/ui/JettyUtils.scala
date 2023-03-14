@@ -237,6 +237,8 @@ private[spark] object JettyUtils extends Logging {
    *
    * If the desired port number is contended, continues incrementing ports until a free port is
    * found. Return the jetty Server object, the chosen port, and a mutable collection of handlers.
+   *
+   * <p>尝试将Jetty服务器绑定到所提供的主机名，端口
    */
   def startJettyServer(
       hostName: String,

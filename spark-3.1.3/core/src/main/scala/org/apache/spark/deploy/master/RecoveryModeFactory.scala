@@ -57,6 +57,7 @@ private[master] class FileSystemRecoveryModeFactory(conf: SparkConf, serializer:
 
   def createPersistenceEngine(): PersistenceEngine = {
     logInfo("Persisting recovery state to directory: " + recoveryDir)
+    // 使用ZookeeperPersisitenceEngline读取集群的状态数据，包括Drivers、
     new FileSystemPersistenceEngine(recoveryDir, serializer)
   }
 

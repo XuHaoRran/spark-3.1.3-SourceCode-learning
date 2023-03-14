@@ -112,8 +112,10 @@ private[spark] class Executor(
       .setThreadFactory((r: Runnable) => new UninterruptibleThread(r, "unused")) // 使用UninterruptibleThread运行任务，
         // 这样就可以允许运行代码不被Thread.interrupt西安测绘给你中端，如果某些方法被中断，程序将会一直被挂起的了啊
       .build()
-
+    // newCachedThreadPool创建一个线程池，根据需要创建新线程，线程池中的线程可以复用，使用提供的ThreadFactory创建新线程
+    // 创建的threadPool中以多线程并发执行和线程复用的方式来高效地执行Spark发过来的Task
     Executors.newCachedThreadPool(threadFactory).asInstanceOf[ThreadPoolExecutor]
+
   }
   private val schemes = conf.get(EXECUTOR_METRICS_FILESYSTEM_SCHEMES)
     .toLowerCase(Locale.ROOT).split(",").map(_.trim).filter(_.nonEmpty)
@@ -353,6 +355,9 @@ private[spark] class Executor(
   }
 
   class TaskRunner(
+    //  execBackend作为和CoarseGrainedSchedulerBackend通信的使者传入到TaskRunner中，
+    //  在任务计算状态发生变化的时候，
+    //  调用execBackend的statusUpdate方法向CoarseGrainedScheduler-Backend报告。
       execBackend: ExecutorBackend,
       private val taskDescription: TaskDescription,
       private val plugins: Option[PluginContainer])
@@ -455,6 +460,7 @@ private[spark] class Executor(
       Thread.currentThread.setContextClassLoader(replClassLoader)
       val ser = env.closureSerializer.newInstance()
       logInfo(s"Running $taskName")
+      // 调用ExecutorBackend的statusUpdate方法向SchedulerBackend发送任务状态更新消息。
       execBackend.statusUpdate(taskId, TaskState.RUNNING, EMPTY_BYTE_BUFFER)
       var taskStartTimeNs: Long = 0
       var taskStartCpu: Long = 0
@@ -630,6 +636,9 @@ private[spark] class Executor(
         val resultSize = serializedDirectResult.limit()
 
         // directSend = sending directly back to the driver
+        // resultSize大于maxResultSize，这种情况下构建IndirectTaskResult对象，
+        // 并返回该IndirectTaskResult对象，IndirectTaskResult对象中包含结果所在的BlockId，
+        // 在SchedulerBackend中可以通过BlockManager获得该BlockId对应的结果数据，这里的maxResultSize默认为1GB
         val serializedResult: ByteBuffer = {
           if (maxResultSize > 0 && resultSize > maxResultSize) {
             logWarning(s"Finished $taskName. Result is larger than maxResultSize " +
@@ -637,6 +646,7 @@ private[spark] class Executor(
               s"dropping it.")
             ser.serialize(new IndirectTaskResult[Any](TaskResultBlockId(taskId), resultSize))
           } else if (resultSize > maxDirectResultSize) {
+            // resultSize大于Akka帧的大小，这种情况下也是构建IndirectTaskResult对象，并返回该IndirectTaskResult对象，Akka帧的大小为128MB
             val blockId = TaskResultBlockId(taskId)
             env.blockManager.putBytes(
               blockId,
@@ -645,6 +655,7 @@ private[spark] class Executor(
             logInfo(s"Finished $taskName. $resultSize bytes result sent via BlockManager)")
             ser.serialize(new IndirectTaskResult[Any](blockId, resultSize))
           } else {
+            // 直接返回DirectTaskResult，这是在resultSize小于Akka帧大小的情况下采取的默认返回方式
             logInfo(s"Finished $taskName. $resultSize bytes result sent to driver")
             serializedDirectResult
           }

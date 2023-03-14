@@ -52,6 +52,7 @@ private[master] class ZooKeeperLeaderElectionAgent(val masterInstance: LeaderEle
   override def isLeader(): Unit = {
     synchronized {
       // could have lost leadership by now.
+      // 可以取得领导权
       if (!leaderLatch.hasLeadership) {
         return
       }
@@ -64,6 +65,7 @@ private[master] class ZooKeeperLeaderElectionAgent(val masterInstance: LeaderEle
   override def notLeader(): Unit = {
     synchronized {
       // could have gained leadership by now.
+      // 可以取得领导权
       if (leaderLatch.hasLeadership) {
         return
       }

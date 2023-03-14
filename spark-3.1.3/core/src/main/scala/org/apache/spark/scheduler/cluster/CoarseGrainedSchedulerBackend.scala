@@ -173,11 +173,13 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
         // TaskSchedulerImpl.statusUpdate, 接收从excutorbackend的信息后，更新状态信息的
         scheduler.statusUpdate(taskId, state, data.value)
         if (TaskState.isFinished(state)) {
+          // 取出executeId对应的ExecutorData对象
           executorDataMap.get(executorId) match {
             case Some(executorInfo) =>
               val rpId = executorInfo.resourceProfileId
               val prof = scheduler.sc.resourceProfileManager.resourceProfileFromId(rpId)
               val taskCpus = ResourceProfile.getTaskCpusOrDefaultForProfile(prof, conf)
+              //
               executorInfo.freeCores += taskCpus
               resources.foreach { case (k, v) =>
                 executorInfo.resourcesInfo.get(k).foreach { r =>
@@ -240,6 +242,7 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
 
       case RegisterExecutor(executorId, executorRef, hostname, cores, logUrls,
           attributes, resources, resourceProfileId) =>
+        //  如果executorDataMap已经存在该Executor的id,则返回Duplicate executor ID的错误
         if (executorDataMap.contains(executorId)) {
           context.sendFailure(new IllegalStateException(s"Duplicate executor ID: $executorId"))
         } else if (scheduler.excludedNodes.contains(hostname) ||
@@ -253,15 +256,21 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
         } else {
           // If the executor's rpc env is not listening for incoming connections, `hostPort`
           // will be null, and the client connection should be used to contact the executor.
+          // 然后进行Executor的注册，获取到executorAddress，
+          // 在executorRef.address为空的情况下就获取到senderAddress
           val executorAddress = if (executorRef.address != null) {
               executorRef.address
             } else {
               context.senderAddress
             }
+          // 注册Executor的请求
           logInfo(s"Registered executor $executorRef ($executorAddress) with ID $executorId, " +
             s" ResourceProfileId $resourceProfileId")
+          // RPC地址主机名和端口与ExecutorId的对应关系
           addressToExecutorId(executorAddress) = executorId
+          // 集群中的总核数
           totalCoreCount.addAndGet(cores)
+          // 当前注册的Executors总数等
           totalRegisteredExecutors.addAndGet(1)
           val resourcesInfo = resources.map { case (rName, info) =>
             // tell the executor it can schedule resources up to numSlotsPerAddress times,
@@ -270,17 +279,22 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
               .resourceProfileFromId(resourceProfileId).getNumSlotsPerAddress(rName, conf)
             (info.name, new ExecutorResourceInfo(info.name, info.addresses, numParts))
           }
+          // 然后调用new()函数创建一个ExecutorData，提取出executorRef、
+          // executorRef.address、hostname、cores、cores、logUrls等信息。
           val data = new ExecutorData(executorRef, executorAddress, hostname,
             0, cores, logUrlHandler.applyPattern(logUrls, attributes), attributes,
             resourcesInfo, resourceProfileId, registrationTs = System.currentTimeMillis())
           // This must be synchronized because variables mutated
           // in this block are read when requesting executors
+          // 集群中很多Executor向Driver注册，为防止写冲突，因此设计一个同步代码块。
+          // 在运行时使用synchronized关键字，来保证executorMapData安全地并发写操作。
           CoarseGrainedSchedulerBackend.this.synchronized {
             executorDataMap.put(executorId, data)
             if (currentExecutorIdCounter < executorId.toInt) {
               currentExecutorIdCounter = executorId.toInt
             }
           }
+          // 并向ListenerBus中发送SparkListenerExecutorAdded
           listenerBus.post(
             SparkListenerExecutorAdded(System.currentTimeMillis(), executorId, data))
           // Note: some tests expect the reply to come after we put the executor in the map
@@ -364,8 +378,10 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
     // Make fake resource offers on just one executor
     private def makeOffers(executorId: String): Unit = {
       // Make sure no executor is killed while some task is launching on it
+      // 执行某项任务时，确保没有Executor被杀死
       val taskDescs = withLock {
         // Filter out executors under killing
+        // 过滤掉被杀死的executors
         if (isExecutorActive(executorId)) {
           val executorData = executorDataMap(executorId)
           val workOffers = IndexedSeq(
@@ -426,7 +442,7 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
           // 注意，序列化的任务是小于128MB的了啊
           executorData.executorEndpoint.send(LaunchTask(new SerializableBuffer(serializedTask)))
         }
-      } 
+      }
     }
 
     // Remove a disconnected executor from the cluster
@@ -517,6 +533,7 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
       adjustTargetNumExecutors: Boolean,
       triggeredByExecutor: Boolean): Seq[String] = withLock {
     // Do not change this code without running the K8s integration suites
+    // 需要确保在TaskSchedulerImpl核CoarseGrainedSchedulerBackend对象之间有锁获取的顺序
     val executorsToDecommission = executorsAndDecomInfo.flatMap { case (executorId, decomInfo) =>
       // Only bother decommissioning executors which are alive.
       if (isExecutorActive(executorId)) {

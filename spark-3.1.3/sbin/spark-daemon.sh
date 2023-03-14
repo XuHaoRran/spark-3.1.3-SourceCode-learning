@@ -116,13 +116,17 @@ if [ "${TEST_LOG_DIR}" = "0" ]; then
 else
   chown "$SPARK_IDENT_STRING" "$SPARK_LOG_DIR"
 fi
-
+# 这是PID文件所在的目录，如果没有设置，默认为/tmp
+# 如果使用了默认目录，可能会出现停止组件失败的信息
+# 原因在于该/tmp下的文件可能会被系统自动删除
 if [ "$SPARK_PID_DIR" = "" ]; then
   SPARK_PID_DIR=/tmp
 fi
 
 # some variables
 log="$SPARK_LOG_DIR/spark-$SPARK_IDENT_STRING-$command-$instance-$HOSTNAME.out"
+# 这是指定实例编号对应的 pid 文件的路径
+# 其中$instance代表实例编号，因此如果编号相同，对应的就是同一个文件
 pid="$SPARK_PID_DIR/spark-$SPARK_IDENT_STRING-$command-$instance.pid"
 
 # Set default scheduling priority
@@ -163,7 +167,7 @@ run_command() {
   shift
 
   mkdir -p "$SPARK_PID_DIR"
-
+  # 检查记录对应实例的PID文件，如果对饮进程已经运行，则会报错
   if [ -f "$pid" ]; then
     TARGET_ID="$(cat "$pid")"
     if [[ $(ps -p "$TARGET_ID" -o comm=) =~ "java" ]]; then
@@ -171,7 +175,6 @@ run_command() {
       exit 1
     fi
   fi
-
   if [ "$SPARK_MASTER" != "" ]; then
     echo rsync from "$SPARK_MASTER"
     rsync -a -e ssh --delete --exclude=.svn --exclude='logs/*' --exclude='contrib/hod/logs/*' "$SPARK_MASTER/" "${SPARK_HOME}"
@@ -181,10 +184,11 @@ run_command() {
   echo "starting $command, logging to $log"
 
   case "$mode" in
+  # 这里对应的是启动一个Spark类
     (class)
       execute_command nice -n "$SPARK_NICENESS" "${SPARK_HOME}"/bin/spark-class "$command" "$@"
       ;;
-
+  # 这里对应提交一个Spark应用程序
     (submit)
       execute_command nice -n "$SPARK_NICENESS" bash "${SPARK_HOME}"/bin/spark-submit --class "$command" "$@"
       ;;

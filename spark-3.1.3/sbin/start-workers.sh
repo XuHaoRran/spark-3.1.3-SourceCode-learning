@@ -18,7 +18,7 @@
 #
 
 # Starts a worker instance on each machine specified in the conf/workers file.
-
+# 在根据conf/slaves 文件指定的每个节点上启动一个Slave实例，即Worker组件
 if [ -z "${SPARK_HOME}" ]; then
   export SPARK_HOME="$(cd "`dirname "$0"`"/..; pwd)"
 fi
@@ -27,6 +27,7 @@ fi
 . "${SPARK_HOME}/bin/load-spark-env.sh"
 
 # Find the port number for the master
+# 找到主机的端口号
 if [ "$SPARK_MASTER_PORT" = "" ]; then
   SPARK_MASTER_PORT=7077
 fi
@@ -43,4 +44,5 @@ if [ "$SPARK_MASTER_HOST" = "" ]; then
 fi
 
 # Launch the workers
+# 启动workers 可以看到它的参数是"spark://$SPARK_MASTER_IP:$SPARK_MASTER_PORT"，    即启动slave节点上的Worker进程时，使用的Master URL的值是通过两个环境变量（SPARK_MASTER_IP和SPARK_MASTER_PORT）拼接而成的
 "${SPARK_HOME}/sbin/workers.sh" cd "${SPARK_HOME}" \; "${SPARK_HOME}/sbin/start-worker.sh" "spark://$SPARK_MASTER_HOST:$SPARK_MASTER_PORT"

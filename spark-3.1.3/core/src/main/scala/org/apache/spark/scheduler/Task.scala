@@ -139,6 +139,7 @@ private[spark] abstract class Task[T](
     plugins.foreach(_.onTaskStart())
 
     try {
+      // 调用runTask，实际上，Task有ShuffleMapTask和ResultTask的了啊
       runTask(context)
     } catch {
       case e: Throwable =>

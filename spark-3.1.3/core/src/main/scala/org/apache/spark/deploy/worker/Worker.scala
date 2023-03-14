@@ -58,6 +58,7 @@ private[deploy] class Worker(
     val securityMgr: SecurityManager,
     resourceFileOpt: Option[String] = None,
     externalShuffleServiceSupplier: Supplier[ExternalShuffleService] = null)
+  // Worker是一个消息循环体，继承自ThreadSafeRpcEndpoint，可以收消息，也可以发消息
   extends ThreadSafeRpcEndpoint with Logging {
 
   private val host = rpcEnv.address.host
@@ -212,23 +213,28 @@ private[deploy] class Worker(
   }
 
   override def onStart(): Unit = {
+    // 刚启动时Worker肯定是未注册的状态
     assert(!registered)
     logInfo("Starting Spark worker %s:%d with %d cores, %s RAM".format(
       host, port, cores, Utils.megabytesToString(memory)))
     logInfo(s"Running Spark version ${org.apache.spark.SPARK_VERSION}")
     logInfo("Spark home: " + sparkHome)
+    // 创建工作目录
     createWorkDir()
+    // 启动shuffle服务
     startExternalShuffleService()
     setupWorkerResources()
     webUi = new WorkerWebUI(this, workDir, webUiPort)
     webUi.bind()
 
     workerWebUiUrl = s"${webUi.scheme}$publicAddress:${webUi.boundPort}"
+    // 每个Slave节点上启动Worker组件时，都需要向集群中的Master注册
     registerWithMaster()
 
     metricsSystem.registerSource(workerSource)
     metricsSystem.start()
     // Attach the worker metrics servlet handler to the web ui after the metrics system is started.
+    // 度量系统启动后，将Worker度量的Servlet处理程序附加到Web用户界面
     metricsSystem.getServletHandlers.foreach(webUi.attachHandler)
   }
 
@@ -292,11 +298,13 @@ private[deploy] class Worker(
 
   private def tryRegisterAllMasters(): Array[JFuture[_]] = {
     masterRpcAddresses.map { masterAddress =>
+        // 用这个连接到master进行注册
       registerMasterThreadPool.submit(new Runnable {
         override def run(): Unit = {
           try {
             logInfo("Connecting to master " + masterAddress + "...")
             val masterEndpoint = rpcEnv.setupEndpointRef(masterAddress, Master.ENDPOINT_NAME)
+            // 向特定Master的RPC通信终端发送消息RegisterWorker
             sendRegisterMessageToMaster(masterEndpoint)
           } catch {
             case ie: InterruptedException => // Cancelled
@@ -401,9 +409,11 @@ private[deploy] class Worker(
   private def registerWithMaster(): Unit = {
     // onDisconnected may be triggered multiple times, so don't attempt registration
     // if there are outstanding registration attempts scheduled.
+    // registerWithMaster方法中调用了tryRegisterAllMasters，向所有的Master进行注册
     registrationRetryTimer match {
       case None =>
         registered = false
+        // registerWithMaster方法中调用了tryRegisterAllMasters，向所有的Master进行注册
         registerMasterFutures = tryRegisterAllMasters()
         connectionAttemptCount = 0
         registrationRetryTimer = Some(forwardMessageScheduler.scheduleAtFixedRate(
@@ -428,6 +438,10 @@ private[deploy] class Worker(
   }
 
   private def sendRegisterMessageToMaster(masterEndpoint: RpcEndpointRef): Unit = {
+    // sendRegisterMessageToMaster方法中的masterEndpoint.send传进去的是RegisterWorker。RegisterWorker是一个case class，
+    // 包括id、host、port、worker、cores、memory等信息，这里Worker是自己的引用RpcEndpointRef，
+    // Master通过Ref通worker通信
+    // 。
     masterEndpoint.send(RegisterWorker(
       workerId,
       host,
@@ -440,6 +454,10 @@ private[deploy] class Worker(
       resources))
   }
 
+  /**
+   * Worker接收到反馈消息后，进一步调用handleRegisterResponse方法进行处理
+   * @param msg
+   */
   private def handleRegisterResponse(msg: RegisterWorkerResponse): Unit = synchronized {
     msg match {
       case RegisteredWorker(masterRef, masterWebUiUrl, masterAddress, duplicate) =>
@@ -459,9 +477,12 @@ private[deploy] class Worker(
         logInfo(s"Successfully registered with master $preferredMasterAddress")
         registered = true
         changeMaster(masterRef, masterWebUiUrl, masterAddress)
+        // 启动周期性心跳发送调度器，在worker生命周期中定期向Worker发送自己的心跳信息
         forwardMessageScheduler.scheduleAtFixedRate(
           () => Utils.tryLogNonFatalError { self.send(SendHeartbeat) },
           0, HEARTBEAT_MILLIS, TimeUnit.MILLISECONDS)
+        // 启动工作目录的定期清理调度器，默认情况下，该配置的属性为False，需要手动设置
+        // 定义属性名为spark.worker.cleanup.enabled
         if (CLEANUP_ENABLED) {
           logInfo(
             s"Worker cleanup enabled; old application directories will be deleted in: $workDir")
@@ -474,13 +495,13 @@ private[deploy] class Worker(
           new ExecutorDescription(e.appId, e.execId, e.cores, e.state)
         }
         masterRef.send(WorkerLatestState(workerId, execs.toList, drivers.keys.toSeq))
-
+      // 注册失败，则推出
       case RegisterWorkerFailed(message) =>
         if (!registered) {
           logError("Worker registration failed: " + message)
           System.exit(1)
         }
-
+      // 注册的Master处于Standby状态
       case MasterInStandby =>
         // Ignore. Master not yet ready.
     }
@@ -551,6 +572,7 @@ private[deploy] class Worker(
       logInfo(s"Master with url $masterUrl requested this worker to reconnect.")
       registerWithMaster()
 
+    // 处理master发送过来的LaunchExecutor的信息
     case LaunchExecutor(masterUrl, appId, execId, appDesc, cores_, memory_, resources_) =>
       if (masterUrl != activeMasterUrl) {
         logWarning("Invalid Master (" + masterUrl + ") attempted to launch executor.")
@@ -589,6 +611,7 @@ private[deploy] class Worker(
             dirs
           })
           appDirectories(appId) = appLocalDirs
+          // 该对象用于管理一个Executor进程
           val manager = new ExecutorRunner(
             appId,
             execId,
@@ -867,7 +890,9 @@ private[deploy] object Worker extends Logging {
       exitOnUncaughtException = false))
     Utils.initDaemon(log)
     val conf = new SparkConf
+    // 构建解析参数的实例
     val args = new WorkerArguments(argStrings, conf)
+    // 启动RPC通信环境以及Worker的PRC通信终端
     val rpcEnv = startRpcEnvAndEndpoint(args.host, args.port, args.webUiPort, args.cores,
       args.memory, args.masters, args.workDir, conf = conf,
       resourceFileOpt = conf.get(SPARK_WORKER_RESOURCE_FILE))
@@ -876,6 +901,9 @@ private[deploy] object Worker extends Logging {
     // bound, we may launch no more than one external shuffle service on each host.
     // When this happens, we should give explicit reason of failure instead of fail silently. For
     // more detail see SPARK-20989.
+    // 启用外部shuffle服务后，如果请求在一台主机上启动多个workers 进程，只能成功地启动第一个 worker 线程，
+    // 其余的则失败，因为端口绑定后，只能在每个主机上启动不超过一个外部 shuffle 服务。当这种情况发生时，
+    // 应该给出明确的失败原因，而不是默默地失败。更多详情见SPARK-20989
     val externalShuffleServiceEnabled = conf.get(config.SHUFFLE_SERVICE_ENABLED)
     val sparkWorkerInstances = scala.sys.env.getOrElse("SPARK_WORKER_INSTANCES", "1").toInt
     require(externalShuffleServiceEnabled == false || sparkWorkerInstances <= 1,

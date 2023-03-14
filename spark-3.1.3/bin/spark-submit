@@ -16,6 +16,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+# 用户应用程序可以使用bin/spark-submit脚本来启动。spark-submit脚本负责使用Spark及其依赖关系设置类路径，并可支持Spark支持的不同群集管理器和部署模式。
+
+# spark-submit脚本提交参数配置中一些常用的选项。
+
+# --class：应用程序的入口点（如org.apache.spark.examples.SparkPi）。
+# --master：集群的主URL（如spark://23.195.26.187:7077）。
+# --deploy-mode：将Driver程序部署在集群Worker节点（cluster）；或作为外部客户端（client）部署在本地（默认值：client）。
+# --conf：任意Spark配置属性，使用key = value格式。对于包含空格的值，用引号括起来，如“key = value”。
+# application-jar：包含应用程序和所有依赖关系Jar包的路径。该URL必须在集群内全局可见。
+#   例如，所有节点上存在的hdfs://路径或file://路径。
+# application-arguments：传递给主类的main方法的参数。
+#
+
+
+
+#
 
 if [ -z "${SPARK_HOME}" ]; then
   source "$(dirname "$0")"/find-spark-home

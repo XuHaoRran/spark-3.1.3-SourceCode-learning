@@ -46,21 +46,29 @@ private[spark] trait TaskScheduler {
   // Invoked after system has successfully initialized (typically in spark context).
   // Yarn uses this to bootstrap allocation of resources based on preferred locations,
   // wait for executor registrations, etc.
+
+  // 成功初始化后调用(通常在 Spark 上下文中)。Yarn 使用这个来引导基于优先位置的资源
+  // 分配，等待从节点登记等
   def postStartHook(): Unit = { }
 
   // Disconnect from the cluster.
+  // 从群集断开连接
   def stop(): Unit
 
   // Submit a sequence of tasks to run.
+  // 提交要运行的任务序列
   def submitTasks(taskSet: TaskSet): Unit
 
   // Kill all the tasks in a stage and fail the stage and all the jobs that depend on the stage.
   // Throw UnsupportedOperationException if the backend doesn't support kill tasks.
+  // 取消stage
   def cancelTasks(stageId: Int, interruptThread: Boolean): Unit
 
   /**
    * Kills a task attempt.
    * Throw UnsupportedOperationException if the backend doesn't support kill a task.
+   *
+   * 杀掉尝试任务
    *
    * @return Whether the task was successfully killed.
    */
@@ -75,15 +83,20 @@ private[spark] trait TaskScheduler {
   def notifyPartitionCompletion(stageId: Int, partitionId: Int): Unit
 
   // Set the DAG scheduler for upcalls. This is guaranteed to be set before submitTasks is called.
+  // 系统为upcalss设置DAG调度，这是保证在submitTasks被调用前被设置
   def setDAGScheduler(dagScheduler: DAGScheduler): Unit
 
   // Get the default level of parallelism to use in the cluster, as a hint for sizing jobs.
+  // 获取集群中使用的默认并行级别，作为对作业的提示
   def defaultParallelism(): Int
 
   /**
    * Update metrics for in-progress tasks and executor metrics, and let the master know that the
    * BlockManager is still alive. Return true if the driver knows about the given block manager.
    * Otherwise, return false, indicating that the block manager should re-register.
+   *
+   * 更新正运行任务，让master 知道 BlockManager 仍活着。如果driver 知道给定的块管理器，
+   * 则返回true;否则返回false，指示块管理器应重新注册
    */
   def executorHeartbeatReceived(
       execId: String,
@@ -93,7 +106,7 @@ private[spark] trait TaskScheduler {
 
   /**
    * Get an application ID associated with the job.
-   *
+   * 获取与作业相关联的应用程序ID
    * @return An application ID
    */
   def applicationId(): String = appId
@@ -110,6 +123,7 @@ private[spark] trait TaskScheduler {
 
   /**
    * Process a lost executor
+   * 处理丢失的executor
    */
   def executorLost(executorId: String, reason: ExecutorLossReason): Unit
 
@@ -120,7 +134,7 @@ private[spark] trait TaskScheduler {
 
   /**
    * Get an application's attempt ID associated with the job.
-   *
+   * 获取与作业相关的应用程序的尝试ID
    * @return An application's Attempt ID
    */
   def applicationAttemptId(): Option[String]

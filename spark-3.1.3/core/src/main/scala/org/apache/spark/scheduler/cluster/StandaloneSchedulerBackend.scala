@@ -115,6 +115,7 @@ private[spark] class StandaloneSchedulerBackend(
     // 使用注册调度必要的一些配置启动executors
     val sparkJavaOpts = Utils.sparkJavaOpts(conf, SparkConf.isExecutorStartupConf)
     val javaOpts = sparkJavaOpts ++ extraJavaOpts
+    // 构建了一个command对象
     val command = Command("org.apache.spark.executor.CoarseGrainedExecutorBackend",
       args, sc.executorEnvs, classPathEntries ++ testingClassPath, libraryPathEntries, javaOpts)
     val webUrl = sc.ui.map(_.webUrl).getOrElse("")
@@ -135,6 +136,7 @@ private[spark] class StandaloneSchedulerBackend(
       webUrl, sc.eventLogDir, sc.eventLogCodec, coresPerExecutor, initialExecutorLimit,
       resourceReqsPerExecutor = executorResourceReqs)
     // 创建一个很重要的对象，然后调用它的client.start方法
+    // 这个携带了command信息，command信息中指定了要启动的ExecutorBackend的实现类
     client = new StandaloneAppClient(sc.env.rpcEnv, masters, appDesc, this, conf)
     client.start()
     launcherBackend.setState(SparkAppHandle.State.SUBMITTED)
