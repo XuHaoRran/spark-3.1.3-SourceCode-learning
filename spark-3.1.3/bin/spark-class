@@ -16,7 +16,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-
+# Spark 2.4.3所有其他脚本最终都调用到的一个执行Java类的脚本
 if [ -z "${SPARK_HOME}" ]; then
   source "$(dirname "$0")"/find-spark-home
 fi
@@ -52,6 +52,7 @@ fi
 
 # Add the launcher build dir to the classpath if requested.
 if [ -n "$SPARK_PREPEND_CLASSES" ]; then
+#  LAUNCH_CLASSPATH变量对应Java命令运行时所需的classpath信息。最终Java命令启动的类是org.apache.spark.launcher.Main
   LAUNCH_CLASSPATH="${SPARK_HOME}/launcher/target/scala-$SPARK_SCALA_VERSION/classes:$LAUNCH_CLASSPATH"
 fi
 

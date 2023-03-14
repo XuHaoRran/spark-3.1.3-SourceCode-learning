@@ -86,6 +86,7 @@ private[deploy] class DriverRunner(
 
   /** Starts a thread to run and manage the driver. */
   private[worker] def start() = {
+    // 启动了一条线程，使用Thread来处理Driver、Executor的启动
     new Thread("DriverRunner for " + driverId) {
       override def run(): Unit = {
         var shutdownHook: AnyRef = null
@@ -96,9 +97,11 @@ private[deploy] class DriverRunner(
           }
 
           // prepare driver jars and run driver
+          // 准备Driver的jar包，运行Driver
           val exitCode = prepareAndRunDriver()
 
           // set final state depending on if forcibly killed and process exit code
+          // 设置的最终状态取决于是否强制删除，并处理退出代码
           finalState = if (exitCode == 0) {
             Some(DriverState.FINISHED)
           } else if (killed) {
@@ -118,6 +121,7 @@ private[deploy] class DriverRunner(
         }
 
         // notify worker of final driver state, possible exception
+        // 通知worker节点Driver的最终状态及可能的异常
         worker.send(DriverStateChanged(driverId, finalState.get, finalException))
       }
     }.start()
@@ -157,8 +161,10 @@ private[deploy] class DriverRunner(
   private def downloadUserJar(driverDir: File): String = {
     val jarFileName = new URI(driverDesc.jarUrl).getPath.split("/").last
     val localJarFile = new File(driverDir, jarFileName)
+    // 如果在一个节点上运行多个Worker，文件可能已经存在
     if (!localJarFile.exists()) { // May already exist if running multiple workers on one node
       logInfo(s"Copying user jar ${driverDesc.jarUrl} to $localJarFile")
+      // 到hadoop找文件
       Utils.fetchFile(
         driverDesc.jarUrl,
         driverDir,
@@ -167,6 +173,7 @@ private[deploy] class DriverRunner(
         SparkHadoopUtil.get.newConfiguration(conf),
         System.currentTimeMillis(),
         useCache = false)
+      // 验证复制成功
       if (!localJarFile.exists()) { // Verify copy succeeded
         throw new IOException(
           s"Can not find expected jar $jarFileName which should have been loaded in $driverDir")
@@ -176,7 +183,11 @@ private[deploy] class DriverRunner(
   }
 
   private[worker] def prepareAndRunDriver(): Int = {
+    // DriverRunner创建Driver在本地系统的工作目录（即Linux的文件目录
     val driverDir = createWorkingDirectory()
+    // downloadUserJar方法调用了fetchFile，fetchFile借助Hadoop，从Hdfs中下载文件。
+    // 我们提交文件时，将jar包上传到Hdfs上，
+    // 提交一份，大家都可以从Hdfs中下载
     val localJarFilename = downloadUserJar(driverDir)
     val resourceFileOpt = prepareResourcesFile(SPARK_DRIVER_PREFIX, resources, driverDir)
 
@@ -200,7 +211,7 @@ private[deploy] class DriverRunner(
       s"$workerUrlRef/logPage?driverId=$driverId&logType=stdout")
     builder.environment.put("SPARK_DRIVER_LOG_URL_STDERR",
       s"$workerUrlRef/logPage?driverId=$driverId&logType=stderr")
-
+    // 通过ProcessBuilder启动Driver ，supervise可以自动重启
     runDriver(builder, driverDir, driverDesc.supervise)
   }
 
@@ -208,6 +219,7 @@ private[deploy] class DriverRunner(
     builder.directory(baseDir)
     def initialize(process: Process): Unit = {
       // Redirect stdout and stderr to files
+      // /stdout和stderr 重定向到文件
       val stdout = new File(baseDir, "stdout")
       CommandUtils.redirectStream(process.getInputStream, stdout)
 
@@ -225,13 +237,17 @@ private[deploy] class DriverRunner(
       command: ProcessBuilderLike, initialize: Process => Unit, supervise: Boolean): Int = {
     var exitCode = -1
     // Time to wait between submission retries.
+    // 等待时间提交重试
     var waitSeconds = 1
     // A run of this many seconds resets the exponential back-off.
+    // 运行一定秒的时间以后回退重置
     val successfulRunDuration = 5
     var keepTrying = !killed
 
     val redactedCommand = Utils.redactCommandLineArgs(conf, command.command)
       .mkString("\"", "\" \"", "\"")
+    // runCommandWithRetry第一次不一定能申请成功，因此循环遍历重试
+    // 如果supervise设置为True，exitCode为非零退出码及driver进程没有终止，我们将keepTrying设置为True，继续循环重试启动进程
     while (keepTrying) {
       logInfo("Launch Command: " + redactedCommand)
 
@@ -245,6 +261,7 @@ private[deploy] class DriverRunner(
       exitCode = process.get.waitFor()
 
       // check if attempting another run
+      // 如果尝试另一个运行检查
       keepTrying = supervise && exitCode != 0 && !killed
       if (keepTrying) {
         if (clock.getTimeMillis() - processStart > successfulRunDuration * 1000L) {

@@ -65,6 +65,9 @@ private[spark] object Deploy {
     .intConf
     .createWithDefault(10)
 
+  // （1）当spreadOutApps=true：使用轮流均摊的策略，也就是采用圆桌（round-robin）算法，
+  // 图中的虚线表示第一次轮流摊派的资源不足以满足申请的需求，因此开始第二轮摊派，依次轮流均摊，直到符合资源需求。
+  // （2）当spreadOutApps=false：使用依次全占策略，依次从可用Workers上获取该Worker上可用的全部资源，直到符合资源需求
   val SPREAD_OUT_APPS = ConfigBuilder("spark.deploy.spreadOut")
     .version("0.6.1")
     .booleanConf

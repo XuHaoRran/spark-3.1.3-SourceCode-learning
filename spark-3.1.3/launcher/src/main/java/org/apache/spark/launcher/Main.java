@@ -35,10 +35,15 @@ class Main {
    * Usage: Main [class] [class args]
    * <p>
    * This CLI works in two different modes:
+   * 命令行界面工作再两种模式下：
    * <ul>
    *   <li>"spark-submit": if <i>class</i> is "org.apache.spark.deploy.SparkSubmit", the
-   *   {@link SparkLauncher} class is used to launch a Spark application.</li>
-   *   <li>"spark-class": if another class is provided, an internal Spark class is run.</li>
+   *   {@link SparkLauncher} class is used to launch a Spark application.
+   *   启动器要启动的类为org.apache.spark.deploy.SparkSubmit时，对应为spark-submit工作模式。
+   *   此时，使用SparkSubmitCommandBuilder类来构建启动命令</li>
+   *   <li>"spark-class": if another class is provided, an internal Spark class is run.
+   *   启动器要启动的类是除SparkSubmit之外的其他类时，对应为spark-class工作模式。
+   *   此时使用SparkClassCommandBuilder类的buildCommand方法来构建启动命令</li>
    * </ul>
    *
    * This class works in tandem with the "bin/spark-class" script on Unix-like systems, and
@@ -79,6 +84,7 @@ class Main {
           help.add(parser.className);
         }
         help.add(parser.USAGE_ERROR);
+        // ，对应的在构建启动命令的SparkSubmitCommandBuilder
         AbstractCommandBuilder builder = new SparkSubmitCommandBuilder(help);
         cmd = buildCommand(builder, env, printLaunchCommand);
       }

@@ -122,7 +122,7 @@ class SparkSubmitCommandBuilder extends AbstractCommandBuilder {
     boolean isExample = false;
     List<String> submitArgs = args;
     this.userArgs = Collections.emptyList();
-
+//    根据输入的第一个参数设置，包括主资源 appResource等
     if (args.size() > 0) {
       switch (args.get(0)) {
         case PYSPARK_SHELL:

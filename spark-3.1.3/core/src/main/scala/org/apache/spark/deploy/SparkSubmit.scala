@@ -60,6 +60,7 @@ import org.apache.spark.util._
 /**
  * Whether to submit, kill, or request the status of an application.
  * The latter two operations are currently supported only for standalone and Mesos cluster modes.
+ * 分别定义了SUBMIT、KILL、REQUEST_STATUS这3种行为类型，对应提交应用、停止应用、查询应用的状态
  */
 private[deploy] object SparkSubmitAction extends Enumeration {
   type SparkSubmitAction = Value
@@ -68,9 +69,15 @@ private[deploy] object SparkSubmitAction extends Enumeration {
 
 /**
  * Main gateway of launching a Spark application.
+ * SparkSubmit是启动一个Spark应用程序的主入口点
  *
  * This program handles setting up the classpath with relevant Spark dependencies and provides
  * a layer over the different cluster managers and deploy modes that Spark supports.
+ * 这个程序处理与Spark 依赖相关的类路径设置，提供 Spark 支持的在不同集群管理器的部*署模式
+ *
+ *
+ * SparkSubmit会帮助我们设置Spark相关依赖包的classpath，同时，为了帮助用户简化提交应用程序的复杂性，SparkSubmit提供了一个抽象层，
+ * 封装了底层复杂的集群管理器与部署模式的各种差异点，即通过SparkSubmit的封装，集群管理器与部署模式对用户是透明的。
  */
 private[spark] class SparkSubmit extends Logging {
 
@@ -80,16 +87,19 @@ private[spark] class SparkSubmit extends Logging {
   def doSubmit(args: Array[String]): Unit = {
     // Initialize logging if it hasn't been done yet. Keep track of whether logging needs to
     // be reset before the application starts.
+    // 如果尚未完成日志记录，则初始化日志记录。跟踪在应用程序启动之前是否需要重置日志记录
     val uninitLog = initializeLogIfNecessary(true, silent = true)
 
     val appArgs = parseArguments(args)
     if (appArgs.verbose) {
       logInfo(appArgs.toString)
     }
+    // 根据4种行为处理
     appArgs.action match {
-      case SparkSubmitAction.SUBMIT => submit(appArgs, uninitLog)
-      case SparkSubmitAction.KILL => kill(appArgs)
-      case SparkSubmitAction.REQUEST_STATUS => requestStatus(appArgs)
+      // 代理入口点为这个方法，提交应用程序的处理方法
+      case SparkSubmitAction.SUBMIT => submit(appArgs, uninitLog) // 提交，调用submit方法
+      case SparkSubmitAction.KILL => kill(appArgs) // 杀死，调用kill方法
+      case SparkSubmitAction.REQUEST_STATUS => requestStatus(appArgs) // 请求状态，调用requestStast方法
       case SparkSubmitAction.PRINT_VERSION => printVersion()
     }
   }
@@ -170,6 +180,8 @@ private[spark] class SparkSubmit extends Logging {
             // Hadoop's AuthorizationException suppresses the exception's stack trace, which
             // makes the message printed to the output by the JVM not very helpful. Instead,
             // detect exceptions with empty stack traces here, and treat them differently.
+            // hadoop的AuthorizationException抑制异常堆栈跟踪，通过JVM打印输
+            // 出的消息不是很有帮助。这里检测异常以及空栈，对其采用不同的处理
             if (e.getStackTrace().length == 0) {
               error(s"ERROR: ${e.getClass().getName()}: ${e.getMessage()}")
             } else {
@@ -186,19 +198,26 @@ private[spark] class SparkSubmit extends Logging {
     //   (2) The new REST-based gateway introduced in Spark 1.3
     // The latter is the default behavior as of Spark 1.3, but Spark submit will fail over
     // to use the legacy gateway if the master endpoint turns out to be not a REST server.
+    // Standalone集群模式下，有两种提交应用程序的方式
+    // 1.传统的RPC网关方式使用oasdeploy_Client进行封装
+    // 2.Spark 1.3使用新REST-based 网关方式,作为Spark 1.3的默认方法,如果Master
+    // 节点不是 REST 服务器节点，Spark 应用程序提交时会切换到传统的网关模式
     if (args.isStandaloneCluster && args.useRest) {
       try {
         logInfo("Running Spark using the REST application submission protocol.")
         doRunMain()
       } catch {
         // Fail over to use the legacy submission gateway
+        // 如果失败，则使用传统的提交方式
         case e: SubmitRestConnectionException =>
           logWarning(s"Master endpoint ${args.master} was not a REST server. " +
             "Falling back to legacy submission gateway instead.")
+          // 重新设置提交方式的控制开关
           args.useRest = false
           submit(args, false)
       }
     // In all other modes, just run the main class as prepared
+      // 再所有其他模式种，只要准备好主类就可以
     } else {
       doRunMain()
     }
@@ -210,10 +229,10 @@ private[spark] class SparkSubmit extends Logging {
    * @param args the parsed SparkSubmitArguments used for environment preparation.
    * @param conf the Hadoop Configuration, this argument will only be set in unit test.
    * @return a 4-tuple:
-   *        (1) the arguments for the child process,
-   *        (2) a list of classpath entries for the child,
-   *        (3) a map of system properties, and
-   *        (4) the main class for the child
+   *        (1) the arguments for the child process, 子进程参数
+   *        (2) a list of classpath entries for the child, 子进程classpath列表
+   *        (3) a map of system properties, and 系统属性map
+   *        (4) the main class for the child 子进程main方法
    *
    * Exposed for testing.
    */
@@ -371,6 +390,9 @@ private[spark] class SparkSubmit extends Logging {
     var localPrimaryResource: String = null
     var localJars: String = null
     var localPyFiles: String = null
+    // 在CLIENT模式下，直接启动应用程序的主类
+    // 此外，在类路径中添加主应用程序 jar 和任何添加的jar (如果有的话)。如果 yarn
+    // 客户机需要这些jar，还应将主应用程序iar和任何添加的iar添加到类路径中
     if (deployMode == CLIENT) {
       localPrimaryResource = Option(args.primaryResource).map {
         downloadFile(_, targetDir, sparkConf, hadoopConf, secMgr)
@@ -570,6 +592,9 @@ private[spark] class SparkSubmit extends Logging {
       }
     }
 
+    // 将主应用程序iar和任何添加的iar添加到类路径,以防yarn客户机需要这些iar
+    // 这假设primaryResource和user jar都是本地jar，否则它不会添加到yarn客户
+    // 机的类路径中
     if (isYarnCluster && args.isR) {
       // In yarn-cluster mode for an R app, add primary resource to files
       // that can be distributed with the job
@@ -891,6 +916,8 @@ private[spark] class SparkSubmit extends Logging {
    * running cluster deploy mode or python applications.
    */
   private def runMain(args: SparkSubmitArguments, uninitLog: Boolean): Unit = {
+    // 准备应用程序提交的环境，该步骤包含了内部封装的各个细节处理
+    // 1.子进程运行所需的参数 2.子进程运行时的classpath列表 3.系统属性的映射 4.子进程运行时的朱磊
     val (childArgs, childClasspath, sparkConf, childMainClass) = prepareSubmitEnvironment(args)
     // Let the main class re-initialize the logging system once it starts.
     if (uninitLog) {
@@ -906,13 +933,18 @@ private[spark] class SparkSubmit extends Logging {
       logInfo("\n")
     }
     val loader = getSubmitClassLoader(sparkConf)
+    // 遍历classpath列表
     for (jar <- childClasspath) {
+      // 使用loader类加载器将jar包依赖加入Classpath
       addJarToClasspath(jar, loader)
     }
 
     var mainClass: Class[_] = null
 
     try {
+      // 获取启动的MainClass
+      // Utils.classForName(childMainClass)方法将会返回要执行的主类，这里的childMainClass是哪一个类呢?
+      // 其实，这个参数在不同的部署模式下是不一样的，standalone模式下，childMainClass指的是org.apache.spark.deploy.Client类
       mainClass = Utils.classForName(childMainClass)
     } catch {
       case e: ClassNotFoundException =>
@@ -948,6 +980,7 @@ private[spark] class SparkSubmit extends Logging {
     }
 
     try {
+      // 为在JavaMainApplication实例的start方法里面执行
       app.start(childArgs.toArray, sparkConf)
     } catch {
       case t: Throwable =>
@@ -985,6 +1018,7 @@ private[spark] object InProcessSparkSubmit {
 object SparkSubmit extends CommandLineUtils with Logging {
 
   // Cluster managers
+  // 集群管理器
   private val YARN = 1
   private val STANDALONE = 2
   private val MESOS = 4
@@ -993,6 +1027,7 @@ object SparkSubmit extends CommandLineUtils with Logging {
   private val ALL_CLUSTER_MGRS = YARN | STANDALONE | MESOS | LOCAL | KUBERNETES
 
   // Deploy modes
+  // 部署模式
   private val CLIENT = 1
   private val CLUSTER = 2
   private val ALL_DEPLOY_MODES = CLIENT | CLUSTER
@@ -1044,7 +1079,7 @@ object SparkSubmit extends CommandLineUtils with Logging {
       }
 
     }
-
+    // 提交
     submit.doSubmit(args)
   }
 

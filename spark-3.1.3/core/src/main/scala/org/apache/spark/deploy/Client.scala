@@ -74,6 +74,10 @@ private class ClientEndpoint(
     sys.props.get(key).orElse(conf.getOption(key))
   }
 
+  /**
+   * onStart方法中向Master提交注册。
+   * 这里通过masterEndpoint向Master发送RequestSubmitDriver(driverDescription)请求，完成Driver的注册。
+   */
   override def onStart(): Unit = {
     driverArgs.cmd match {
       case "launch" =>
@@ -111,6 +115,7 @@ private class ClientEndpoint(
           command,
           driverResourceReqs)
         asyncSendToMasterAndForwardReply[SubmitDriverResponse](
+          // 这里通过masterEndpoint向Master发送RequestSubmitDriver(driverDescription)请求，完成Driver的注册。
           RequestSubmitDriver(driverDescription))
 
       case "kill" =>
@@ -265,6 +270,7 @@ private class ClientEndpoint(
 object Client {
   def main(args: Array[String]): Unit = {
     // scalastyle:off println
+    // 若sys中不包含SPARK_SUBMIT，则打印警告信息
     if (!sys.props.contains("SPARK_SUBMIT")) {
       println("WARNING: This client is deprecated and will be removed in a future version of Spark")
       println("Use ./bin/spark-submit with \"--master spark://host:port\"")
@@ -277,20 +283,36 @@ object Client {
 private[spark] class ClientApp extends SparkApplication {
 
   override def start(args: Array[String], conf: SparkConf): Unit = {
+    // 实例化出一个SparkConfig对象，通过这个配置对象，可以在代码中指定一些配置项，
+    // 如appName、Master地址等。val driverArgs = new ClientArguments(args)
+    // 使用传入的args参数构建一个ClientArguments对象，该对象同样保留传入的配置信息，
+    // 如Executor memory、Executor cores等都包含在这个
     val driverArgs = new ClientArguments(args)
-
+    // 设置RPC请求超时时间为10sif (!conf.contains("spark.rpc.
     if (!conf.contains(RPC_ASK_TIMEOUT)) {
       conf.set(RPC_ASK_TIMEOUT, "10s")
     }
     Logger.getRootLogger.setLevel(driverArgs.logLevel)
-
+    // 使用RpcEnv的create创建RPC环境
+//    使用该成员设置好到Master的通信端点，通过该端点实现同Master的通信
     val rpcEnv =
       RpcEnv.create("driverClient", Utils.localHostName(), 0, conf, new SecurityManager(conf))
-
+    // 得到master的URL并得到Master的Endpoints，用于同Master通信
     val masterEndpoints = driverArgs.masters.map(RpcAddress.fromSparkURL).
       map(rpcEnv.setupEndpointRef(_, Master.ENDPOINT_NAME))
-    rpcEnv.setupEndpoint("client", new ClientEndpoint(rpcEnv, driverArgs, masterEndpoints, conf))
+    // 在rpcEnv.setupEndpoint方法中调用new()函数创建一个Driver ClientEndpoint。
+    // ClientEndpoint是一个ThreadSafeRpcEndpoint消息循环体，
+    // 至此就生成了Driver ClientEndpoint。
+    // 在ClientEndpoint的onStart方法中向Master提交注册。
+    // 这里通过masterEndpoint向Master发送RequestSubmitDriver(driverDescription)请求，
+    // 完成Driver的注册
 
+    // Master收到Driver ClientEndpoint的RequestSubmitDriver消息以后，就将Driver的信息加入到waitingDrivers和drivers的数据结构中。
+    // 然后进行schedule()资源分配，Master向Worker发送LaunchDriver的消息指令
+
+
+    rpcEnv.setupEndpoint("client", new ClientEndpoint(rpcEnv, driverArgs, masterEndpoints, conf))
+    // 等待rpcEnv的终止
     rpcEnv.awaitTermination()
   }
 

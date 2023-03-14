@@ -2941,6 +2941,7 @@ object SparkContext extends Logging {
         val scheduler = new TaskSchedulerImpl(sc)
         val masterUrls = sparkUrl.split(",").map("spark://" + _)
         val backend = new StandaloneSchedulerBackend(scheduler, sc, masterUrls)
+        // StandaloneSchedulerBackend传进来，赋值为TaskSchedulerImpl的backend。
         scheduler.initialize(backend)
         (backend, scheduler)
 

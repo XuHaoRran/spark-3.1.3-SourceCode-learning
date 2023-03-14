@@ -364,6 +364,9 @@ private[deploy] class Master(
         schedule()
       }
 
+    /**
+     * 接收worker传进来的ExecutorStateChanged，比如executor退出的
+     */
     case ExecutorStateChanged(appId, execId, state, message, exitStatus) =>
       val execOption = idToApp.get(appId).flatMap(app => app.executors.get(execId))
       execOption match {
@@ -386,6 +389,7 @@ private[deploy] class Master(
             logInfo(s"Removing executor ${exec.fullId} because it is $state")
             // If an application has already finished, preserve its
             // state to display its information properly on the UI
+            // 如果应用程序已经完成，保存应用程序状态，以在 UI页面上正确显示信息
             if (!appInfo.isFinished) {
               appInfo.removeExecutor(exec)
             }
@@ -520,6 +524,9 @@ private[deploy] class Master(
   }
 
   override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
+    // Master收到Driver ClientEndpoint的RequestSubmitDriver消息以后，
+    // 就将Driver的信息加入到waitingDrivers和drivers的数据结构中。
+    // 然后进行schedule()资源分配，Master向Worker发送LaunchDriver的消息指令。
     case RequestSubmitDriver(description) =>
       // 若 state 不为 ALIVE，直接向 Client 返回 SubmitDriverResponse(selffalse
       // None_msg)消息
@@ -726,6 +733,7 @@ private[deploy] class Master(
       usableWorkers: Array[WorkerInfo],
       spreadOutApps: Boolean): Array[Int] = {
     val coresPerExecutor = app.desc.coresPerExecutor
+    // 表示每个Executor最小分配的core个数
     val minCoresPerExecutor = coresPerExecutor.getOrElse(1)
     val oneExecutorPerWorker = coresPerExecutor.isEmpty
     val memoryPerExecutor = app.desc.memoryPerExecutorMB
@@ -733,6 +741,7 @@ private[deploy] class Master(
     val numUsable = usableWorkers.length
     val assignedCores = new Array[Int](numUsable) // Number of cores to give to each worker
     val assignedExecutors = new Array[Int](numUsable) // Number of new executors on each worker
+    // 用于计算app.coresLeft与可用的Worker中可用的Cores的和的最小值
     var coresToAssign = math.min(app.coresLeft, usableWorkers.map(_.coresFree).sum)
 
     /** Return whether the specified worker can launch an executor for this app. */
@@ -776,6 +785,9 @@ private[deploy] class Master(
 
           // If we are launching one executor per worker, then every iteration assigns 1 core
           // to the executor. Otherwise, every iteration assigns cores to a new executor.
+          // 如果每个Worker下面只能为当前的应用程序分配一个Executor，那么每次只分配一个Core
+          // 如果每个worker上启动一个Executor，那么每次迭代在Executor 上分配1
+          // 个核，否则，每次迭代都将把内核分配给一个新的 Executor
           if (oneExecutorPerWorker) {
             assignedExecutors(pos) = 1
           } else {
@@ -786,6 +798,9 @@ private[deploy] class Master(
           // many workers as possible. If we are not spreading out, then we should keep
           // scheduling executors on this worker until we use all of its resources.
           // Otherwise, just move on to the next worker.
+          // 展开应用程序意味着将Executors 展开到尽可能多的workers 节点。如果不展
+          // 开，将对这个 workers的Executors 进行调度，直到使用它的全部资源。否则
+          // 只是移动到下一个 worker节点
           if (spreadOutApps) {
             keepScheduling = false
           }
@@ -802,21 +817,27 @@ private[deploy] class Master(
   private def startExecutorsOnWorkers(): Unit = {
     // Right now this is a very simple FIFO scheduler. We keep trying to fit in the first app
     // in the queue, then the second app, etc.
+    // 这是一个非常简单的 FIFO 调度。我们尝试在队列中推入第一个应用程序，然后推入第2个应用程序等
     for (app <- waitingApps) {
+      // 筛选出workers，其没有足够资源来启动Executor
       val coresPerExecutor = app.desc.coresPerExecutor.getOrElse(1)
       // If the cores left is less than the coresPerExecutor,the cores left will not be allocated
       if (app.coresLeft >= coresPerExecutor) {
         // Filter out workers that don't have enough resources to launch an executor
+        // 如果剩余的核心小于coresPerExecutor，则不会分配剩余的核心
         val usableWorkers = workers.toArray.filter(_.state == WorkerState.ALIVE)
           .filter(canLaunchExecutor(_, app.desc))
+            // 在此基础上进行排序，产生计算资源由大到小的coresFree数据结构
           .sortBy(_.coresFree).reverse
         val appMayHang = waitingApps.length == 1 &&
           waitingApps.head.executors.isEmpty && usableWorkers.isEmpty
         if (appMayHang) {
           logWarning(s"App ${app.id} requires more resource than any of Workers could have.")
         }
+        // spreadOutApps默认让应用程序尽可能地多运行在所有的Node上
         val assignedCores = scheduleExecutorsOnWorkers(app, usableWorkers, spreadOutApps)
 
+        // 现在我们决定每个worker分配多少个cores，进行分配
         // Now that we've decided how many cores to allocate on each worker, let's allocate them
         for (pos <- 0 until usableWorkers.length if assignedCores(pos) > 0) {
           allocateWorkerResourceToExecutors(
@@ -841,10 +862,13 @@ private[deploy] class Master(
     // If the number of cores per executor is specified, we divide the cores assigned
     // to this worker evenly among the executors with no remainder.
     // Otherwise, we launch a single executor that grabs all the assignedCores on this worker.
+    // 如果指定了每个 Executor 的内核数，我们就将分配的内核无剩余地均分给 worker 节点的
+    // Executors。否则，我们启动一个单一的 Executor，抓住这个 worker 节点所有的assignedCores
     val numExecutors = coresPerExecutor.map { assignedCores / _ }.getOrElse(1)
     val coresToAssign = coresPerExecutor.getOrElse(assignedCores)
     for (i <- 1 to numExecutors) {
       val allocated = worker.acquireResources(app.desc.resourceReqsPerExecutor)
+      // 增加一个executor，记录Executor的相关信息
       val exec = app.addExecutor(worker, coresToAssign, allocated)
       // standaloneschedulerbackend中的standaloneappclient向master发送registterapplication注册请求
       // master受理后通过launchExecutor方法在worker节点启动一个executorRunner对象，该对象由于管理一个Executor进程
@@ -887,6 +911,8 @@ private[deploy] class Master(
   /**
    * Schedule the currently available resources among waiting apps. This method will be called
    * every time a new app joins or resource availability changes.
+   *
+   * Schedule调用的时机：每次有新的应用程序提交或者集群资源状况发生改变的时候（包括Executor增加或者减少、Worker增加或者减少等）。
    */
   private def schedule(): Unit = {
     if (state != RecoveryState.ALIVE) {
@@ -928,12 +954,14 @@ private[deploy] class Master(
         logWarning(s"Driver ${driver.id} requires more resource than any of Workers could have.")
       }
     }
+    // 调用startExecutorsOnWorkers()为当前的程序调度和启动Worker的Executor，默认情况下排队的方式是FIFO
     startExecutorsOnWorkers()
   }
 
   private def launchExecutor(worker: WorkerInfo, exec: ExecutorDesc): Unit = {
     logInfo("Launching executor " + exec.fullId + " on worker " + worker.id)
     worker.addExecutor(exec)
+    // Master要通过远程通信发指令给Worker来具体启动ExecutorBackend进程
     worker.endpoint.send(LaunchExecutor(masterUrl, exec.application.id, exec.id,
       exec.application.desc, exec.cores, exec.memory, exec.resources))
     exec.application.driver.send(
@@ -1254,6 +1282,7 @@ private[deploy] class Master(
     logInfo("Launching driver " + driver.id + " on worker " + worker.id)
     worker.addDriver(driver)
     driver.worker = Some(worker)
+    // 发指令给worker，让远程的worker启动driver，driver启动之后，Driver的状态就变成DriverState.RUNNING
     worker.endpoint.send(LaunchDriver(driver.id, driver.desc, driver.resources))
     driver.state = DriverState.RUNNING
   }
@@ -1275,6 +1304,7 @@ private[deploy] class Master(
         driver.state = finalState
         driver.exception = exception
         driver.worker.foreach(w => w.removeDriver(driver))
+        // 清掉相关数据以后，再次调用schedule方法
         schedule()
       case None =>
         logWarning(s"Asked to remove unknown driver: $driverId")

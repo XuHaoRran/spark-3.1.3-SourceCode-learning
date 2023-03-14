@@ -39,6 +39,7 @@ private[spark] trait SparkApplication {
 private[deploy] class JavaMainApplication(klass: Class[_]) extends SparkApplication {
 
   override def start(args: Array[String], conf: SparkConf): Unit = {
+    // mainClass上调用getMethod方法得到main方法，最后在mainMethod上调用invoke执行main方法
     val mainMethod = klass.getMethod("main", new Array[String](0).getClass)
     if (!Modifier.isStatic(mainMethod.getModifiers)) {
       throw new IllegalStateException("The main method in the given main class must be static")
@@ -48,7 +49,7 @@ private[deploy] class JavaMainApplication(klass: Class[_]) extends SparkApplicat
     sysProps.foreach { case (k, v) =>
       sys.props(k) = v
     }
-
+    // 要注意的是，执行invoke方法同时传入了childArgs参数，这个参数中保留了配置信息
     mainMethod.invoke(null, args)
   }
 

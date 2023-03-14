@@ -38,6 +38,8 @@ import org.apache.spark.util.Utils
 /**
  * Parses and encapsulates arguments from the spark-submit script.
  * The env argument is used for testing.
+ *
+ * 该脚本的用法需要从源码中获取，具体源码位置参考SparkSubmitArguments类的方法printUsageAndExit
  */
 private[deploy] class SparkSubmitArguments(args: Seq[String], env: Map[String, String] = sys.env)
   extends SparkSubmitArgumentsParser with Logging {
@@ -105,17 +107,21 @@ private[deploy] class SparkSubmitArguments(args: Seq[String], env: Map[String, S
   }
 
   // Set parameters from command line arguments
+  // 调用parse方法，从命令行解析出各个参数
   parse(args.asJava)
 
   // Populate `sparkProperties` map from properties file
+  // 合并默认的Spark 配置项，使用传入的配置覆盖默认的配置
   mergeDefaultSparkProperties()
   // Remove keys that don't start with "spark." from `sparkProperties`.
+  // 从sparkProperties 移除不是“spark”为开始的配置
   ignoreNonSparkProperties()
   // Use `sparkProperties` map along with env vars to fill in any missing parameters
+  // 加载系统环境变量中的配置信
   loadEnvironmentArguments()
 
   useRest = sparkProperties.getOrElse("spark.master.rest.enabled", "false").toBoolean
-
+  //  验证参数是否合法
   validateArguments()
 
   /**

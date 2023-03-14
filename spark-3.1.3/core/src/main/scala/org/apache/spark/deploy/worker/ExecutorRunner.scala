@@ -76,6 +76,7 @@ private[deploy] class ExecutorRunner(
 
   private[worker] def start(): Unit = {
     workerThread = new Thread("ExecutorRunner for " + fullId) {
+      // 调用fetchAndRunExecutor
       override def run(): Unit = { fetchAndRunExecutor() }
     }
     workerThread.start()
@@ -197,9 +198,11 @@ private[deploy] class ExecutorRunner(
       worker.send(ExecutorStateChanged(appId, execId, state, None, None))
       // Wait for it to exit; executor may exit with code 0 (when driver instructs it to shutdown)
       // or with nonzero exit code
+      // 等待它退出:执行器可以退出代码0(当driver 指示它关闭)或非零退出码
       val exitCode = process.waitFor()
       state = ExecutorState.EXITED
       val message = "Command exited with code " + exitCode
+      // 退出时发送ExecutorStateChanged消息给Worker
       worker.send(ExecutorStateChanged(appId, execId, state, Some(message), Some(exitCode)))
     } catch {
       case interrupted: InterruptedException =>

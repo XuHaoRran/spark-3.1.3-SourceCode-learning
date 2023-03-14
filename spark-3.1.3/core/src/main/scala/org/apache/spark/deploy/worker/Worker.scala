@@ -591,6 +591,8 @@ private[deploy] class Worker(
           // Create local dirs for the executor. These are passed to the executor via the
           // SPARK_EXECUTOR_DIRS environment variable, and deleted by the Worker when the
           // application finishes.
+          // /创建cxecutor的本地目录，通过SPARK_EXECUTOR_DIRS 环境变量传递给
+          // executor。应用程序完成后，这些目录将被Worker删除
           val appLocalDirs = appDirectories.getOrElse(appId, {
             val localRootDirs = Utils.getOrCreateLocalRootDirs(conf)
             val dirs = localRootDirs.flatMap { dir =>
@@ -632,6 +634,7 @@ private[deploy] class Worker(
             ExecutorState.LAUNCHING,
             resources_)
           executors(appId + "/" + execId) = manager
+          // 启动一个线程Thread，在run方法中调用fetchAndRunExecutor
           manager.start()
           coresUsed += cores_
           memoryUsed += memory_
@@ -679,6 +682,7 @@ private[deploy] class Worker(
         securityMgr,
         resources_)
       drivers(driverId) = driver
+      // 启动Driver
       driver.start()
 
       coresUsed += driverDesc.cores
@@ -694,6 +698,11 @@ private[deploy] class Worker(
           logError(s"Asked to kill unknown driver $driverId")
       }
 
+    /**
+     * Worker.scala的handleDriverStateChanged方法中对于state的不同情况，打印相关日志。
+     * 关键代码是sendToMaster(driverStateChanged)，发一个消息给Master，告知Driver进程挂掉。
+     * 消息内容是driverStateChanged
+     */
     case driverStateChanged @ DriverStateChanged(driverId, state, exception) =>
       handleDriverStateChanged(driverStateChanged)
 
@@ -848,6 +857,7 @@ private[deploy] class Worker(
 
   private[worker] def handleExecutorStateChanged(executorStateChanged: ExecutorStateChanged):
     Unit = {
+    // sendToMaster(executorStateChanged)发executorState-Changed消息给Master
     sendToMaster(executorStateChanged)
     val state = executorStateChanged.state
     if (ExecutorState.isFinished(state)) {

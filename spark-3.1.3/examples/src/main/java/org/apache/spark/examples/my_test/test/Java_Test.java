@@ -5,43 +5,40 @@ import java.util.*;
 public class Java_Test {
 
     public static void main(String[] args) {
-        int x = 22;
-        int[] nums = new int[10003];
-        int t = 1;
-        nums[1] = 1;
-        for(int i = 2; i < nums.length; i++){
-            nums[i] = nums[i - 1] + ++t;
-        }
-        int temp = x;
-        StringBuilder sb = new StringBuilder();
-        int idx = 0;
-        char[] red = new char[]{'r','e','d'};
-        while(temp > 0){
-            int mid = search(nums, temp);
-            for (int i = 0; i < mid; i++) {
-                sb.append(red[idx]);
+        Scanner in = new Scanner(System.in);
+        // 注意 hasNext 和 hasNextLine 的区别
+        while (in.hasNextLine()) { // 注意 while 处理多个 case
+            String str1 = in.nextLine();
+            String str2 = in.nextLine();
+            String[] strs1 = str1.split(" ");
+            String[] strs2 = str2.split(" ");
+            int[] nums = new int[strs1.length];
+            for(int i = 0; i < nums.length; i++){
+                nums[i] = Integer.parseInt(strs1[i]);
             }
-            idx = (idx + 1) % 3;
-            temp -= nums[mid];
-        }
-        System.out.println(sb);
-
-    }
-
-    public static int search(int[] nums, int x){
-        int l = 1;
-        int r = nums.length - 1;
-        while(l < r){
-            int mid =  (l + r) / 2;
-            if(nums[mid] < x){
-                l = mid;
-            }else if(nums[mid] > x){
-                r = mid - 1;
-            }else{
-                return mid;
+            int[] candy = new int[strs2.length];
+            for(int i = 0; i < candy.length; i++){
+                candy[i] = Integer.parseInt(strs2[i]);
             }
+
+            Arrays.sort(nums);
+            Arrays.sort(candy);
+            int idx = 0;
+            int maxIdx = candy.length;
+            int res = 0;
+            for(int i = 0; i < nums.length; i++){
+                if(idx ==  maxIdx) return;
+
+                while(idx < maxIdx && nums[i] > candy[idx]){
+                    idx++;
+                }
+                if(nums[i] < candy[idx]) {
+                    res++;
+                    idx++;
+                }
+            }
+            System.out.println(res);
         }
-        return l;
     }
 
 }
