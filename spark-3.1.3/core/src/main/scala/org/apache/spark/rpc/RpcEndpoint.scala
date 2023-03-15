@@ -22,9 +22,16 @@ import org.apache.spark.SparkException
 /**
  * A factory class to create the [[RpcEnv]]. It must have an empty constructor so that it can be
  * created using Reflection.
+ *
+ * RpcEnvFactory是一个工厂类，创建[RpcEnv]，必须有一个空构造函数，以便可以使用反射创建。create根据具体的配置，反射出具体的实例对象。
  */
 private[spark] trait RpcEnvFactory {
 
+  /**
+   * 通过create方法创建RpcEnv实例对象，默认用Netty
+   * @param config
+   * @return
+   */
   def create(config: RpcEnvConfig): RpcEnv
 }
 
@@ -67,14 +74,20 @@ private[spark] trait RpcEndpoint {
    * unmatched message, `SparkException` will be thrown and sent to `onError`.
    */
   def receive: PartialFunction[Any, Unit] = {
+    // receive方法处理从[RpcEndpointRef.send]或者[RpcCallContext.reply]发过来的消息
+    // ，如果收到一个不匹配的消息，[SparkException]会抛出一个异常onError
     case _ => throw new SparkException(self + " does not implement 'receive'")
   }
 
   /**
    * Process messages from `RpcEndpointRef.ask`. If receiving a unmatched message,
    * `SparkException` will be thrown and sent to `onError`.
+   *
+   * Master继承自ThreadSafeRpcEndpoint，接收消息使用receive方法和receiveAndReply方法。
    */
   def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
+    // receiveAndReply方法处理从[RpcEndpointRef.ask]发过来的消息，如果收到一个不匹配的消息，
+    // [SparkException]会抛出一个异常onError。receiveAndReply方法返回PartialFunction对象
     case _ => context.sendFailure(new SparkException(self + " won't reply anything"))
   }
 

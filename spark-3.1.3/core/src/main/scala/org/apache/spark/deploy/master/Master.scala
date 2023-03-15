@@ -354,7 +354,9 @@ private[deploy] class Master(
         // ignore, don't send response
       } else {
         logInfo("Registering app " + description.name)
+        // 创建ApplicationInfo
         val app = createApplication(description, driver)
+        // 完成application的注册
         registerApplication(app)
         logInfo("Registered app " + description.name + " with ID " + app.id)
         // 通过持久化引擎（如ZooKeeper）把注册信息持久化
@@ -964,6 +966,8 @@ private[deploy] class Master(
     // Master要通过远程通信发指令给Worker来具体启动ExecutorBackend进程
     worker.endpoint.send(LaunchExecutor(masterUrl, exec.application.id, exec.id,
       exec.application.desc, exec.cores, exec.memory, exec.resources))
+    // 向Driver发回ExecutorAdded消息，消息携带 worker的id号、worker的host和
+    // port、分配的核的个数和内存大小
     exec.application.driver.send(
       ExecutorAdded(exec.id, worker.id, worker.hostPort, exec.cores, exec.memory))
   }
@@ -1099,24 +1103,34 @@ private[deploy] class Master(
 
   private def createApplication(desc: ApplicationDescription, driver: RpcEndpointRef):
       ApplicationInfo = {
+    // applicationinfo创建时间
     val now = System.currentTimeMillis()
     val date = new Date(now)
+    // 由date生成application id
     val appId = newApplicationId(date)
+    // 使用desc、date、driver、defaultCores等作为参数构造一个ApplicatiOnInfo对象并返回
     new ApplicationInfo(now, appId, desc, date, driver, defaultCores)
   }
 
   private def registerApplication(app: ApplicationInfo): Unit = {
+    // driver的地址，用于Master和Driver通信
     val appAddress = app.driver.address
+    //  如果addressToApp中已经有了该Driver地址，说明该Driver已经注册过了 ，直接return
     if (addressToApp.contains(appAddress)) {
       logInfo("Attempted to re-register application at same address: " + appAddress)
       return
     }
-
+    // 向度量系统注册
     applicationMetricsSystem.registerSource(app.appSource)
+    // apps是一个HashSet，保存数据不能重复，向HashSet加入app
     apps += app
+    // idToApp是一个HashMap，该HashMap用于保存id和app 的对应关系
     idToApp(app.id) = app
+    // endpointToApp是一个HashMap，该HashMap 用于保存driver和app的对应关系
     endpointToApp(app.driver) = app
+    // addressToApp 是一个HashMap，记录app Driver的地址和app 的对应关系
     addressToApp(appAddress) = app
+    // waitingApps是一个数组，记录等待调度的app记录
     waitingApps += app
   }
 

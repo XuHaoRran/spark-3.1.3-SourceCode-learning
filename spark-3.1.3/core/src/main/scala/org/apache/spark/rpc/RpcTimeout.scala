@@ -84,6 +84,7 @@ private[spark] object RpcTimeout {
    * Lookup the timeout property in the configuration and create
    * a RpcTimeout with the property key in the description.
    *
+   * RpcTimeout关联超时的原因描述，当TimeoutException发生的时候，关于超时的额外的上下文将包含在异常消息中。
    * @param conf configuration properties containing the timeout
    * @param timeoutProp property key for the timeout in seconds
    * @throws NoSuchElementException if property is not set

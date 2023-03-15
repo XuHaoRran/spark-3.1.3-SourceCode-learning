@@ -509,6 +509,8 @@ private[deploy] class Worker(
 
   override def receive: PartialFunction[Any, Unit] = synchronized {
     case msg: RegisterWorkerResponse =>
+      // 如果注册成功，Master就发送Worker节点成功的RegisteredWorker消息；
+      // 如果注册失败，Master就发送Worker节点失败的RegisterWorkerFailed消息
       handleRegisterResponse(msg)
 
     case SendHeartbeat =>
@@ -574,11 +576,14 @@ private[deploy] class Worker(
 
     // 处理master发送过来的LaunchExecutor的信息
     case LaunchExecutor(masterUrl, appId, execId, appDesc, cores_, memory_, resources_) =>
+      // 判断传过来的masterUrl是否和activeMasterUrl相同，如果不相同，说明收到的不是处于ALIVE状态的Master发送过来的请求，这种情况直接打印警告信息
       if (masterUrl != activeMasterUrl) {
         logWarning("Invalid Master (" + masterUrl + ") attempted to launch executor.")
       } else if (decommissioned) {
         logWarning("Asked to launch an executor while decommissioned. Not launching executor.")
       } else {
+        // 如果相同，则说明该请求来自ALIVE Master，于是为Executor创建工作目录，
+        // 创建好工作目录之后，使用appid、execid、appDes等参数创建ExecutorRunner
         try {
           logInfo("Asked to launch executor %s/%d for %s".format(appId, execId, appDesc.name))
 
@@ -706,6 +711,7 @@ private[deploy] class Worker(
     case driverStateChanged @ DriverStateChanged(driverId, state, exception) =>
       handleDriverStateChanged(driverStateChanged)
 
+    // Worker启动时，从生命周期的角度，Worker实例化的时候提交Master进行注册
     case ReregisterWithMaster =>
       reregisterWithMaster()
 

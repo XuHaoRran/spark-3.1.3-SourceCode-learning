@@ -58,6 +58,16 @@ import org.apache.spark.util.io.ChunkedByteBuffer
  * This can be used with Mesos, YARN, and the standalone scheduler.
  * An internal RPC interface is used for communication with the driver,
  * except in the case of Mesos fine-grained mode.
+ *
+ * <p>Executor到底是什么时候启动的
+ *
+ * <p>SparkContext启动后，StandaloneSchedulerBackend中会调用new()函数创建一个StandaloneAppClient，
+ * StandaloneAppClient中有一个名叫ClientEndPoint的内部类，
+ * 在创建ClientEndpoint时会传入Command来指定具体为当前应用程序启动的Executor进行的入口类的名称
+ * 为CoarseGrainedExecutorBackend。
+ * ClientEndPoint继承自ThreadSafeRpcEndpoint，其通过RPC机制完成和Master的通信。
+ * 在ClientEndPoint的start方法中，会通过registerWithMaster方法向Master发送RegisterApplication请求，
+ * Master收到该请求消息后，首先通过registerApplication方法完成信息登记，之后将会调用schedule方法，在Worker上启动Executor。
  */
 private[spark] class Executor(
     executorId: String,

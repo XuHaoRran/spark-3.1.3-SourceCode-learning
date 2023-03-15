@@ -85,7 +85,10 @@ private[spark] class RestSubmissionClient(master: String) extends Logging {
       validateMaster(m)
       val url = getSubmitUrl(m)
       try {
+        // 向RestSubmissionServer发送post请求
         response = postJson(url, request.toJson)
+        // RestSubmissionServer接收到post请求后，由对应的Servlet进行处理，
+        // 这里对应为StandaloneSubmitRequestServlet，即开始第4步，调用doPost，发送Post请求
         response match {
           case s: CreateSubmissionResponse =>
             if (s.success) {
@@ -443,9 +446,13 @@ private[spark] class RestSubmissionClientApp extends SparkApplication {
       throw new IllegalArgumentException("'spark.master' must be set.")
     }
     val sparkProperties = conf.getAll.toMap
+    // 创建一个Rest提交客户端
     val client = new RestSubmissionClient(master)
+    // 在RestSubmissionClient实例中，根据提交的应用程序信息，构建出提交请求
     val submitRequest = client.constructSubmitRequest(
       appResource, mainClass, appArgs, sparkProperties, env)
+    // 向RestSubmissionServer发送post请求
+    // Rest提交客户端开始创建Submission，创建过程中向RestSubmissionServer发送post请求
     client.createSubmission(submitRequest)
   }
 

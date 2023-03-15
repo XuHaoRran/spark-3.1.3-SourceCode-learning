@@ -75,12 +75,15 @@ private[deploy] class ExecutorRunner(
   private var shutdownHook: AnyRef = null
 
   private[worker] def start(): Unit = {
+    // 创建线程，这个线程负责下载依赖的文件，并启动CoarseGrainedExecutorBackend进程，该进程单独在一个JVM上运行
     workerThread = new Thread("ExecutorRunner for " + fullId) {
       // 调用fetchAndRunExecutor
       override def run(): Unit = { fetchAndRunExecutor() }
     }
+    // 启动线程
     workerThread.start()
     // Shutdown hook that kills actors on shutdown.
+    // 终止回调函数，用于杀死进程
     shutdownHook = ShutdownHookManager.addShutdownHook { () =>
       // It's possible that we arrive here before calling `fetchAndRunExecutor`, then `state` will
       // be `ExecutorState.LAUNCHING`. In this case, we should set `state` to `FAILED`.
@@ -150,6 +153,7 @@ private[deploy] class ExecutorRunner(
     try {
       val resourceFileOpt = prepareResourcesFile(SPARK_EXECUTOR_PREFIX, resources, executorDir)
       // Launch the process
+      // 传入的入口类是"org.apache.spark.executor.CoarseGrainedExecutorBackend
       val arguments = appDesc.command.arguments ++ resourceFileOpt.map(f =>
         Seq("--resourcesFile", f.getAbsolutePath)).getOrElse(Seq.empty)
       val subsOpts = appDesc.command.javaOpts.map {

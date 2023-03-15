@@ -54,6 +54,7 @@ private[spark] object RpcEnv {
       clientMode: Boolean): RpcEnv = {
     val config = RpcEnvConfig(conf, name, bindAddress, advertiseAddress, port, securityManager,
       numUsableCores, clientMode)
+    // creat方法直接调用new()函数创建一个NettyRpcEnvFactory，调用NettyRpcEnvFactory().create方法
     new NettyRpcEnvFactory().create(config)
   }
 }
@@ -67,9 +68,24 @@ private[spark] object RpcEnv {
  * sender, or logging them if no such sender or `NotSerializableException`.
  *
  * [[RpcEnv]] also provides some methods to retrieve [[RpcEndpointRef]]s given name or uri.
+ *
+ * <p>RPC环境中[RpcEndpoint]需要注册自己的名字[RpcEnv]来接收消息。
+ * [RpcEnv]将处理消息发送到[RpcEndpointRef]或远程节点，并提供给相应的[RpcEndpoint]。
+ * [RpcEnv]未被捕获的异常，[RpcEnv]将使用[RpcCallContext.sendFailure]发送异常给发送者，
+ * 如果没有这样的发送者，则记录日志NotSerializableException
+ *
+ * <p>（1）RpcEnv是RPC的环境（相当于Akka中的ActorSystem），
+ * 所有的RPCEndpoint都需要注册到RpcEnv实例对象中（注册的时候会指定注册的名称，
+ * 这样客户端就可以通过名称查询到RpcEndpoint的RpcEndpointRef引用，从而进行通信），
+ * 在RpcEndpoint接收到消息后会调用receive方法进行处理。
+ *
+ * <p>（2）RpcEndpoint如果接收到需要reply的消息，就会交给自己的receiveAndReply来处理
+ * （回复时是通过RpcCallContext中的reply方法来回复发送者的），如果不需要reply，就交给receive方法来处理。
+ *
+ * <p>（3）RpcEnvFactory是负责创建RpcEnv的，通过create方法创建RpcEnv实例对象，默认用Netty。
  */
 private[spark] abstract class RpcEnv(conf: SparkConf) {
-
+  // 返回RPC远程端点查找时默认的Spark的超时时间
   private[spark] val defaultLookupTimeout = RpcUtils.lookupRpcTimeout(conf)
 
   /**
@@ -86,6 +102,8 @@ private[spark] abstract class RpcEnv(conf: SparkConf) {
   /**
    * Register a [[RpcEndpoint]] with a name and return its [[RpcEndpointRef]]. [[RpcEnv]] does not
    * guarantee thread-safety.
+   *
+   * setupEndpoint方法注册时根据RpcEndpoint名称返回RpcEndpointRef
    */
   def setupEndpoint(name: String, endpoint: RpcEndpoint): RpcEndpointRef
 

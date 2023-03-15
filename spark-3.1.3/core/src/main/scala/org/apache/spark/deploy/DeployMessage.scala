@@ -220,20 +220,25 @@ private[deploy] object DeployMessages {
 
   // DriverClient <-> Master
 
+  // DriverClient向 Master 请求提交Driver
   case class RequestSubmitDriver(driverDescription: DriverDescription) extends DeployMessage
 
+  // Master向Driver Client返回注册是否成功
   case class SubmitDriverResponse(
       master: RpcEndpointRef, success: Boolean, driverId: Option[String], message: String)
     extends DeployMessage
 
   case class RequestKillDriver(driverId: String) extends DeployMessage
 
+  // Master回复Kill Driver是否成功
   case class KillDriverResponse(
       master: RpcEndpointRef, driverId: String, success: Boolean, message: String)
     extends DeployMessage
 
+  // Driver Client向Master请求Driver状态
   case class RequestDriverStatus(driverId: String) extends DeployMessage
 
+  // Master向Driver Client返回状态请求信息
   case class DriverStatusResponse(found: Boolean, state: Option[DriverState],
     workerId: Option[String], workerHostPort: Option[String], exception: Option[Exception])
 

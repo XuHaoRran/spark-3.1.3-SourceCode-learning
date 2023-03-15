@@ -168,6 +168,7 @@ private[rest] class StandaloneSubmitRequestServlet(
     val extraJavaOpts = driverExtraJavaOptions.map(Utils.splitCommandString).getOrElse(Seq.empty)
     val sparkJavaOpts = Utils.sparkJavaOpts(conf)
     val javaOpts = sparkJavaOpts ++ defaultJavaOpts ++ extraJavaOpts
+    // 构建Command实例，将主类mainClass 封装到DriverWrapper(可以通过jps查看)
     val command = new Command(
       "org.apache.spark.deploy.worker.DriverWrapper",
       Seq("{{WORKER_URL}}", "{{USER_JAR}}", mainClass) ++ appArgs, // args to the DriverWrapper
@@ -177,6 +178,7 @@ private[rest] class StandaloneSubmitRequestServlet(
     val actualSuperviseDriver = superviseDriver.map(_.toBoolean).getOrElse(DEFAULT_SUPERVISE)
     val driverResourceReqs = ResourceUtils.parseResourceRequirements(conf,
       config.SPARK_DRIVER_PREFIX)
+    // 构建驱动程序的描述信息DriverDescription
     new DriverDescription(
       appResource, actualDriverMemory, actualDriverCores, actualSuperviseDriver, command,
       driverResourceReqs)
@@ -187,6 +189,9 @@ private[rest] class StandaloneSubmitRequestServlet(
    *
    * This assumes that the request message is already successfully validated.
    * If the request message is not of the expected type, return error to the client.
+   *
+   * 开始处理提交请求
+   *
    */
   protected override def handleSubmit(
       requestMessageJson: String,
@@ -194,8 +199,12 @@ private[rest] class StandaloneSubmitRequestServlet(
       responseServlet: HttpServletResponse): SubmitRestProtocolResponse = {
     requestMessage match {
       case submitRequest: CreateSubmissionRequest =>
+        // 在这里开始构建驱动程序(也就是包含 SparkContext的应用程序)的描述信息
+        // 对应DriverDescription实例并向Master的RPC终端masterEndpoint发
+        // 送请求消息RequestSubmitDriver
         val driverDescription = buildDriverDescription(submitRequest)
         val response = masterEndpoint.askSync[DeployMessages.SubmitDriverResponse](
+          // 在处理过程中，向Master的RPC终端发送消息RequestSubmitDriver
           DeployMessages.RequestSubmitDriver(driverDescription))
         val submitResponse = new CreateSubmissionResponse
         submitResponse.serverSparkVersion = sparkVersion

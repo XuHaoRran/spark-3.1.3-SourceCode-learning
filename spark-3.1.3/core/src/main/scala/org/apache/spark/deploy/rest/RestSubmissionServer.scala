@@ -212,6 +212,9 @@ private[rest] abstract class KillRequestServlet extends RestServlet {
   /**
    * If a submission ID is specified in the URL, have the Master kill the corresponding
    * driver and return an appropriate response to the client. Otherwise, return error.
+   *
+   * RestSubmissionServer接收到post请求后，由对应的Servlet进行处理，
+   * 这里对应为StandaloneSubmitRequestServlet，调用doPost，发送Post请求
    */
   protected override def doPost(
       request: HttpServletRequest,

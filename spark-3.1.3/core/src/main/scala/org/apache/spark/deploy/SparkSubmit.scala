@@ -738,6 +738,7 @@ private[spark] class SparkSubmit extends Logging {
 
     // In standalone cluster mode, use the REST client to submit the application (Spark 1.3+).
     // All Spark parameters are expected to be passed to the client through system properties.
+    // 在REST方式（Spark 1.3+）方式中，childMainClass是"org.apache.spark.deploy.rest.RestSubmissionClient"
     if (args.isStandaloneCluster) {
       if (args.useRest) {
         childMainClass = REST_CLUSTER_SUBMIT_CLASS

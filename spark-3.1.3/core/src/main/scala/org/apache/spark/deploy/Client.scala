@@ -75,8 +75,23 @@ private class ClientEndpoint(
   }
 
   /**
-   * onStart方法中向Master提交注册。
-   * 这里通过masterEndpoint向Master发送RequestSubmitDriver(driverDescription)请求，完成Driver的注册。
+   * <p>onStart方法中向Master提交注册。
+   * <p>这里通过masterEndpoint向Master发送RequestSubmitDriver(driverDescription)请求，完成Driver的注册。
+   *
+   *
+   * <p>onStart之后发生了什么？？？
+   * <p>在Client.scala的onStart代码中，提交的配置参数始终在不同的对象、节点上传递。
+   * Master把Driver加载到Worker节点并启动，Worker节点上运行的Driver同样包含配置参数。
+   * 当Driver端的SparkContext启动并实例化DAGScheduler、TaskScheduler时，
+   * StandaloneSchedulerBackend在做另一件事情——实例化StandaloneAppClient，
+   * StandaloneAppClient中有StandaloneApp-ClientPoint，也是一个RPC端口的引用，用于和Master进行通信。
+   * 在StandaloneAppClientPoint的onStart方法中，
+   * 向Master发送RegisterApplication(appDescription,self)请求，
+   * Master节点收到请求并调用schedule方法，向Worker发送
+   * LaunchExecutor(masterUrl,exec.application.id,exec.id,exec.application.desc, exec.cores, exec.memory)请求，
+   * Worker节点启动ExecutorRunner。
+   * ExecutorRunner中启动CoarseGrainedExecutorBackend并向Driver注册
+   * 。
    */
   override def onStart(): Unit = {
     driverArgs.cmd match {

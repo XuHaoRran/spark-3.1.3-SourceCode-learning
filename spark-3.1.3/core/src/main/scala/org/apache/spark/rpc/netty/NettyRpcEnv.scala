@@ -42,6 +42,7 @@ import org.apache.spark.rpc._
 import org.apache.spark.serializer.{JavaSerializer, JavaSerializerInstance, SerializationStream}
 import org.apache.spark.util.{ByteBufferInputStream, ByteBufferOutputStream, ThreadUtils, Utils}
 
+
 private[netty] class NettyRpcEnv(
     val conf: SparkConf,
     javaSerializerInstance: JavaSerializerInstance,
@@ -122,7 +123,9 @@ private[netty] class NettyRpcEnv(
       } else {
         java.util.Collections.emptyList()
       }
+      // 创建server，创建一个TransportServer
     server = transportContext.createServer(bindAddress, port, bootstraps)
+    // dispatcher注册RpcEnpoint
     dispatcher.registerRpcEndpoint(
       RpcEndpointVerifier.NAME, new RpcEndpointVerifier(this, dispatcher))
   }
@@ -459,6 +462,18 @@ private[netty] class NettyRpcEnv(
   }
 }
 
+/**
+ * /**
+ * RPC的应用RpcEndpoint的生命周期：构造（constructor）–>启动（onStart）、消息接收（receive、receiveAndReply）、
+ * 停止（onStop）。
+ * Master中接收消息的方式有两种：
+ * ① receive接收消息不回复；
+ * ②receiveAndReply通过context.reply的方式回复消息。例如，Worker发送Master的RegisterWorker消息，
+ * 当Master注册成功，Master就返回Worker RegisteredWorker消息。
+ * Worker启动时，从生命周期的角度，Worker实例化的时候提交Master进行注册。
+
+*/
+ */
 private[netty] object NettyRpcEnv extends Logging {
   /**
    * When deserializing the [[NettyRpcEndpointRef]], it needs a reference to [[NettyRpcEnv]].
@@ -486,6 +501,8 @@ private[rpc] class NettyRpcEnvFactory extends RpcEnvFactory with Logging {
     val sparkConf = config.conf
     // Use JavaSerializerInstance in multiple threads is safe. However, if we plan to support
     // KryoSerializer in future, we have to use ThreadLocal to store SerializerInstance
+    // 在多个线程中使用JavaSerializerInstance 是安全的。然而，如果将来计划支持
+    // KryoSerializer，必须使用ThreadLocal来存储SerializerInstance
     val javaSerializerInstance =
       new JavaSerializer(sparkConf).newInstance().asInstanceOf[JavaSerializerInstance]
     val nettyEnv =
@@ -493,6 +510,7 @@ private[rpc] class NettyRpcEnvFactory extends RpcEnvFactory with Logging {
         config.securityManager, config.numUsableCores)
     if (!config.clientMode) {
       val startNettyRpcEnv: Int => (NettyRpcEnv, Int) = { actualPort =>
+          // 通过transportContext.createServer创建Server
         nettyEnv.startServer(config.bindAddress, actualPort)
         (nettyEnv, nettyEnv.address.port)
       }
