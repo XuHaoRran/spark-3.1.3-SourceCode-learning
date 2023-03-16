@@ -37,11 +37,14 @@ import org.apache.spark.util.collection.OpenHashSet
  * Sort-based shuffle has two different write paths for producing its map output files:
  *
  *  - Serialized sorting: used when all three of the following conditions hold:
+ *  这种方式对应了新引入的基于Tungsten项目的方式。
  *    1. The shuffle dependency specifies no map-side combine.
  *    2. The shuffle serializer supports relocation of serialized values (this is currently
  *       supported by KryoSerializer and Spark SQL's custom serializers).
  *    3. The shuffle produces fewer than or equal to 16777216 output partitions.
  *  - Deserialized sorting: used to handle all other cases.
+ *  这种方式对应除了前面这种方式之外的其他方式
+ *  基于Sort的Shuffle实现机制采用的是反序列化排序模式
  *
  * -----------------------
  * Serialized sorting mode
@@ -69,6 +72,19 @@ import org.apache.spark.util.collection.OpenHashSet
  *    and avoids the need to allocate decompression or copying buffers during the merge.
  *
  * For more details on these optimizations, see SPARK-7081.
+ *
+ * Sorted Based Shuffle，即基于Sorted的Shuffle实现机制，在该Shuffle过程中，Sorted体现在输出的数据会根据目标的分区Id
+ * （即带Shuffle过程的目标RDD中各个分区的Id值）进行排序，然后写入一个单独的Map端输出文件中。相应地，
+ * 各个分区内部的数据并不会再根据Key值进行排序，除非调用带排序目的的方法，在方法中指定Key值的Ordering实例，
+ * 才会在分区内部根据该Ordering实例对数据进行排序。当Map端的输出数据超过内存容纳大小时，会将各个排序结果Spill到磁盘上，
+ * 最终再将这些Spill的文件合并到一个最终的文件中。在Spark的各种计算算子中到处体现了一种惰性的理念，在此也类似，在需要提升性能时，
+ * 引入根据分区Id排序的设计，同时仅在指定分区内部排序的情况下，才会全局去排序。
+ *
+ * 从ShuffleManager注册的配置属性与具体实现子类的映射关系，即前面提及的在SparkEnv中实例化的代码，可以看出sort与
+ * tungsten-sort对应的具体实现子类都是org.apache.spark.shuffle.sort.SortShuffleManager。
+ * 也就是当前基于Sort的Shuffle实现机制与使用Tungsten项目的Shuffle实现机制都是通过SortShuffleManager类来提供接口，
+ * 两种实现机制的区别在于，该类中使用了不同的Shuffle数据写入器。
+ *
  */
 private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager with Logging {
 
@@ -95,20 +111,26 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
   override def registerShuffle[K, V, C](
       shuffleId: Int,
       dependency: ShuffleDependency[K, V, C]): ShuffleHandle = {
+    // 通过shouldBypassMergeSort方法判断是否满足回退到Hash分割Shuffle条件
     if (SortShuffleWriter.shouldBypassMergeSort(conf, dependency)) {
       // If there are fewer than spark.shuffle.sort.bypassMergeThreshold partitions and we don't
       // need map-side aggregation, then write numPartitions files directly and just concatenate
       // them at the end. This avoids doing serialization and deserialization twice to merge
       // together the spilled files, which would happen with the normal code path. The downside is
       // having multiple files open at a time and thus more memory allocated to buffers.
+      // 如果当前的分区个数小于设置的配置属性
+      // spark.shuffle.sort.bypassMergeThreshold，同时不需要在Map对数据进行聚合，
+      // 此时可以直接写文件，并在最后将文件合并
       new BypassMergeSortShuffleHandle[K, V](
         shuffleId, dependency.asInstanceOf[ShuffleDependency[K, V, V]])
     } else if (SortShuffleManager.canUseSerializedShuffle(dependency)) {
       // Otherwise, try to buffer map outputs in a serialized form, since this is more efficient:
+      // 否则，试图Map输出缓冲区的序列化形式，因为这样效率更高
       new SerializedShuffleHandle[K, V](
         shuffleId, dependency.asInstanceOf[ShuffleDependency[K, V, V]])
     } else {
       // Otherwise, buffer map outputs in a deserialized form:
+      // 否则，缓冲区map以反序列化的形式输出
       new BaseShuffleHandle(shuffleId, dependency)
     }
   }
@@ -136,7 +158,11 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
       shouldBatchFetch = canUseBatchFetch(startPartition, endPartition, context))
   }
 
-  /** Get a writer for a given partition. Called on executors by map tasks. */
+  /** Get a writer for a given partition. Called on executors by map tasks.
+   * 基于Sort的Shuffle实现机制中相关的ShuffleHandle包含BypassMergeSortShuffleHandle与BaseShuffleHandle。
+   * 对应这两种ShuffleHandle及其相关的Shuffle数据写入器类型的相关代码可以参考SortShuffleManager类的getWriter方法
+   *
+   * */
   override def getWriter[K, V](
       handle: ShuffleHandle,
       mapId: Long,
@@ -146,6 +172,7 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
       handle.shuffleId, _ => new OpenHashSet[Long](16))
     mapTaskIds.synchronized { mapTaskIds.add(context.taskAttemptId()) }
     val env = SparkEnv.get
+    // 通过ShuffleHandle类型的模式匹配，构建具体的数据写入器
     handle match {
       case unsafeShuffleHandle: SerializedShuffleHandle[K @unchecked, V @unchecked] =>
         new UnsafeShuffleWriter(

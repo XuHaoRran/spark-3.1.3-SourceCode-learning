@@ -47,6 +47,9 @@ import org.apache.spark.util.{Utils => TryUtils}
  * `spark.shuffle.compress`).  We may need to revisit this if ExternalSorter is used in other
  * non-shuffle contexts where we might want to use different configuration settings.
  *
+ * Sorted-Based Shuffle的核心是借助于ExternalSorter把每个ShuffleMapTask的输出排序到一个文件中（FileSegmentGroup），
+ * 为了区分下一个阶段Reducer Task不同的内容，它还需要有一个索引文件（Index）来告诉下游Stage的并行任务，那一部分是属于下游Stage的
+ *
  * @param aggregator optional Aggregator with combine functions to use for merging data
  * @param partitioner optional Partitioner; if given, sort by partition ID and then key
  * @param ordering optional Ordering to sort keys within each partition; should be a total ordering
@@ -193,6 +196,7 @@ private[spark] class ExternalSorter[K, V, C](
         addElementsRead()
         kv = records.next()
         map.changeValue((getPartition(kv._1), kv._1), update)
+        // 是否需要Splii
         maybeSpillCollection(usingMap = true)
       }
     } else {
@@ -213,6 +217,7 @@ private[spark] class ExternalSorter[K, V, C](
    */
   private def maybeSpillCollection(usingMap: Boolean): Unit = {
     var estimatedSize = 0L
+    // 判断使用map还是buffer
     if (usingMap) {
       estimatedSize = map.estimateSize()
       if (maybeSpill(map, estimatedSize)) {
@@ -677,8 +682,9 @@ private[spark] class ExternalSorter[K, V, C](
    * otherwise unused code path.
    */
   def writePartitionedFile(
-      blockId: BlockId,
-      outputFile: File): Array[Long] = {
+      blockId: BlockId, // BlockId是数据块的逻辑位置
+      outputFile: File // File参数是对应逻辑位置的物理存储位置
+    ): Array[Long] = {
 
     // Track location of each range in the output file
     val lengths = new Array[Long](numPartitions)

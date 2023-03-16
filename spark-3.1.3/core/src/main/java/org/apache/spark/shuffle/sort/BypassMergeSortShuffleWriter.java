@@ -73,6 +73,20 @@ import org.apache.spark.util.Utils;
  * refactored into its own class in order to reduce code complexity; see SPARK-7855 for details.
  * <p>
  * There have been proposals to completely remove this code path; see SPARK-6026 for details.
+ *
+ * 该类实现了带Hash风格的基于Sort的Shuffle机制，为每个Reduce端的任务构建一个输出文件，
+ * 将输入的每条记录分别写入各自对应的文件中，并在最后将这些基于各个分区的文件合并成一个输出文件
+ *
+ * 在Reducer端任务数比较少的情况下，基于Hash的Shuffle实现机制明显比基于Sort的Shuffle实现机制要快，
+ * 因此基于Sort的Shuffle实现机制提供了一个fallback方案，
+ * 对于Reducer端任务数少于配置属性spark.shuffle.sort.bypassMergeThreshold设置的个数时，
+ * 使用带Hash风格的fallback计划，由BypassMergeSortShuffleWriter具体实现。
+ *
+ * 使用该写入器的条件如下。
+ * （1）不能指定Ordering，从前面数据读取器的解析可以知道，当指定Ordering时，会对分区内部的数据进行排序。
+ * 因此，对应的BypassMergeSortShuffleWriter写入器避免了排序开销。
+ * （2）不能指定Aggregator。
+ * （3）分区个数小于spark.shuffle.sort.bypassMergeThreshold配置属性指定的个数。
  */
 final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
 
@@ -125,22 +139,29 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
 
   @Override
   public void write(Iterator<Product2<K, V>> records) throws IOException {
+    // 为每个Reduce端的分区打开的DiskBlockObjectWriter存放于partitionWriters，需要根据具体的Reduce端的分区个数进行构建
     assert (partitionWriters == null);
     ShuffleMapOutputWriter mapOutputWriter = shuffleExecutorComponents
         .createMapOutputWriter(shuffleId, mapId, numPartitions);
     try {
       if (!records.hasNext()) {
         partitionLengths = mapOutputWriter.commitAllPartitions().getPartitionLengths();
+        // 下面代码的调用形式是对应在Java类中调用Scala提供的object中的applay方法的形式，是由编译器编译Scala中的object得到的结果来决定的
         mapStatus = MapStatus$.MODULE$.apply(
           blockManager.shuffleServerId(), partitionLengths, mapId);
         return;
       }
       final SerializerInstance serInstance = serializer.newInstance();
       final long openStartTime = System.nanoTime();
+      // 对应每个分区各配置一个磁盘写入器DisBLockObjectWriter
       partitionWriters = new DiskBlockObjectWriter[numPartitions];
       partitionWriterSegments = new FileSegment[numPartitions];
+      // 注意，在该写入方式下，会同时打开numPartitions个DiskBlockObjectWriter，
+      // 因此对应的分区数不应设置过大，避免带来过大的内存开销目前对应的DisBlockObjectWriter的缓存默认大小
+      // 配置为32KB，比早先的100KB降低了很多，但也说明不适合同时打开太多的DiskBlockObjectWriter实例
       for (int i = 0; i < numPartitions; i++) {
         final Tuple2<TempShuffleBlockId, File> tempShuffleBlockIdPlusFile =
+                // 其中调用的createTempShuffleBlock方法描述了各个分区生成的中间临时文件的格式与对应的BlockId
             blockManager.diskBlockManager().createTempShuffleBlock();
         final File file = tempShuffleBlockIdPlusFile._2();
         final BlockId blockId = tempShuffleBlockIdPlusFile._1();
@@ -150,11 +171,13 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
       // Creating the file to write to and creating a disk writer both involve interacting with
       // the disk, and can take a long time in aggregate when we open many files, so should be
       // included in the shuffle write time.
+      // 创建文件写入和创建磁盘写入器都涉及与磁盘的交互，当打开许多文件时，磁盘写会花费很长时间，所以磁盘写入时间应包含在Shuffle写入时间内
       writeMetrics.incWriteTime(System.nanoTime() - openStartTime);
-
+      // 读取每条记录，并根据分区器将该记录交由分区对应的DiskBlockObjectWriter写入各自对应的临时文件
       while (records.hasNext()) {
         final Product2<K, V> record = records.next();
         final K key = record._1();
+        // 根据分区器写文件
         partitionWriters[partitioner.getPartition(key)].write(key, record._2());
       }
 
@@ -163,8 +186,9 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
           partitionWriterSegments[i] = writer.commitAndGet();
         }
       }
-
+      // 将所有按分区的文件连接到一个单独的组合文件中，返回：文件的每个分区的长度数组（以字节为单位）（由map output tracker使用）
       partitionLengths = writePartitionedData(mapOutputWriter);
+      // 封装并返回任务结果
       mapStatus = MapStatus$.MODULE$.apply(
         blockManager.shuffleServerId(), partitionLengths, mapId);
     } catch (Exception e) {

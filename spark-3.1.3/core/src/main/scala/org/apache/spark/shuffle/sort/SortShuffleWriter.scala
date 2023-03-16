@@ -52,6 +52,8 @@ private[spark] class SortShuffleWriter[K, V, C](
    *  具体的文件中，操作完成后会把MapStatus发送给Driver端的DAGScheduler的MapOutputTracker。
    * */
   override def write(records: Iterator[Product2[K, V]]): Unit = {
+    // 当需要在Map端进行聚合操作时，此时将会指定聚合器(Aggregator)
+    // 将key值的Ordering传入到外部排序器ExternalSorter中
     sorter = if (dep.mapSideCombine) {
       new ExternalSorter[K, V, C](
         context, dep.aggregator, Some(dep.partitioner), dep.keyOrdering, dep.serializer)
@@ -59,17 +61,23 @@ private[spark] class SortShuffleWriter[K, V, C](
       // In this case we pass neither an aggregator nor an ordering to the sorter, because we don't
       // care whether the keys get sorted in each partition; that will be done on the reduce side
       // if the operation being run is sortByKey.
+      // 没有指定Map端使用聚合时，传入ExternalSorter的聚合器与key值的ordering都设为None，即不需要传入，对应在Reduce端读取数据时
+      // 才根据聚合器分区数据进行聚合，并根据是否设置Ordering而选择是否对分区数据进行排序
       new ExternalSorter[K, V, V](
         context, aggregator = None, Some(dep.partitioner), ordering = None, dep.serializer)
     }
+    // 将写入的记录的记录集全部放入外部排序器
     sorter.insertAll(records)
 
     // Don't bother including the time to open the merged output file in the shuffle write time,
     // because it just opens a single file, so is typically too fast to measure accurately
     // (see SPARK-3570).
+    // 不要费心在Shuffle写时间中，包括打开合并输出文件的时间，因为它只打开一个文件，所以通常太快，无法精确测量
+    // 和BypassMergeSortShuffleWriter一样，获取输出文件名和BlockId
     val mapOutputWriter = shuffleExecutorComponents.createMapOutputWriter(
       dep.shuffleId, mapId, dep.partitioner.numPartitions)
     sorter.writePartitionedMapOutput(dep.shuffleId, mapId, mapOutputWriter)
+    // 将分区数据写入文件，返回各个分区对应的数据量
     val partitionLengths = mapOutputWriter.commitAllPartitions().getPartitionLengths
     mapStatus = MapStatus(blockManager.shuffleServerId, partitionLengths, mapId)
   }
