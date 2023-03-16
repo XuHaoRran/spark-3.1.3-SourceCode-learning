@@ -167,7 +167,8 @@ final class ShuffleBlockFetcherIterator(
   private[this] val shuffleFilesSet = mutable.HashSet[DownloadFile]()
 
   private[this] val onCompleteCallback = new ShuffleFetchCompletionListener(this)
-
+  // 调用了initialize
+  // 该方法中会根据数据块所在位置（本地节点或远程节点）分别进行读取
   initialize()
 
   // Decrements the buffer reference count.
@@ -539,23 +540,30 @@ final class ShuffleBlockFetcherIterator(
 
   private[this] def initialize(): Unit = {
     // Add a task completion callback (called in both success case and failure case) to cleanup.
+    // 任务完成进行回调清理，在成功案例和失败案例中调用
     context.addTaskCompletionListener(onCompleteCallback)
 
     // Partition blocks by the different fetch modes: local, host-local and remote blocks.
+    // 本地与远程的数据读取方式不同，因此先进行拆分，注意拆分时会考虑一次获取的数据
+    // 大小(拆分时会同时考虑并行数)封装请求，最后会将剩余不足该大小的数据获取也封装
+    // 为一个请求
     val remoteRequests = partitionBlocksByFetchMode()
     // Add the remote requests into our queue in a random order
+    // 存入需要远程读取的数据块请求信息
     fetchRequests ++= Utils.randomize(remoteRequests)
     assert ((0 == reqsInFlight) == (0 == bytesInFlight),
       "expected reqsInFlight = 0 but found reqsInFlight = " + reqsInFlight +
       ", expected bytesInFlight = 0 but found bytesInFlight = " + bytesInFlight)
 
     // Send out initial requests for blocks, up to our maxBytesInFlight
+    // 发送数据获取请求
     fetchUpToMaxBytes()
 
     val numFetches = remoteRequests.size - fetchRequests.size
     logInfo(s"Started $numFetches remote fetches in ${Utils.getUsedTimeNs(startTimeNs)}")
 
     // Get Local Blocks
+    // 除了远程数据获取外，下面是获取本地数据块的方法调用
     fetchLocalBlocks()
     logDebug(s"Got local blocks in ${Utils.getUsedTimeNs(startTimeNs)}")
 

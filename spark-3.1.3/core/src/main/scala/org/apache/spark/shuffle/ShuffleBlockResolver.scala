@@ -26,6 +26,14 @@ private[spark]
  * identifier (i.e. map, reduce, and shuffle). Implementations may use files or file segments to
  * encapsulate shuffle data. This is used by the BlockStore to abstract over different shuffle
  * implementations when shuffle data is retrieved.
+ *
+ * 该特质的具体实现子类知道如何通过一个逻辑Shuffle块标识信息来获取一个块数据。
+ * 具体实现可以使用文件或文件段来封装Shuffle的数据。
+ * 这是获取Shuffle块数据时使用的抽象接口，在BlockStore中使用
+ *
+ * 目前在ShuffleBlockResolver的各个具体子类中，除给出获取数据的接口外，
+ * 通常会提供如何解析块数据信息的接口，即提供了写数据块时的物理块与逻辑块之间映射关系的解析方法。
+ *
  */
 trait ShuffleBlockResolver {
   type ShuffleId = Int
@@ -37,6 +45,8 @@ trait ShuffleBlockResolver {
    * read from the specified directories.
    *
    * If the data for that block is not available, throws an unspecified exception.
+   *
+   * 获取指定块的数据，如果指定块的数据无法获取，则抛出异常
    */
   def getBlockData(blockId: BlockId, dirs: Option[Array[String]] = None): ManagedBuffer
 

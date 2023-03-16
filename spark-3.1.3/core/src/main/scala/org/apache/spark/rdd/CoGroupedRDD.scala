@@ -127,11 +127,13 @@ class CoGroupedRDD[K: ClassTag](
 
   override val partitioner: Some[Partitioner] = Some(part)
 
+  // 对指定分区进行计算的抽象接口，以下为 CoGroupedRDD具体子类中该方法的实现
   override def compute(s: Partition, context: TaskContext): Iterator[(K, Array[Iterable[_]])] = {
     val split = s.asInstanceOf[CoGroupPartition]
     val numRdds = dependencies.length
 
     // A list of (rdd iterator, dependency number) pairs
+    // 列表（RDD迭代器、依赖项编号）
     val rddIterators = new ArrayBuffer[(Iterator[Product2[K, Any]], Int)]
     for ((dep, depNum) <- dependencies.zipWithIndex) dep match {
       case oneToOneDependency: OneToOneDependency[Product2[K, Any]] @unchecked =>
@@ -143,6 +145,10 @@ class CoGroupedRDD[K: ClassTag](
       case shuffleDependency: ShuffleDependency[_, _, _] =>
         // Read map outputs of shuffle
         val metrics = context.taskMetrics().createTempShuffleReadMetrics()
+        // 首先从SparkEnv获取ShuffleManager
+        // 然后从ShuffleDependency中获取注册到ShuffleManager时得到的shuffleHandle
+        // 根据shuffleHandle和当前Task对应的分区ID，获取ShuffleWriter
+        // 最后根据获取的ShuffleReader，调用其read接口，读取Shuffle的map输出
         val it = SparkEnv.get.shuffleManager
           .getReader(
             shuffleDependency.shuffleHandle, split.index, split.index + 1, context, metrics)

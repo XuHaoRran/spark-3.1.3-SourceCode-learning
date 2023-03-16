@@ -55,12 +55,22 @@ class OrderedRDDFunctions[K : Ordering : ClassTag,
    * `collect` or `save` on the resulting RDD will return or output an ordered list of records
    * (in the `save` case, they will be written to multiple `part-X` files in the filesystem, in
    * order of the keys).
+   * 当需要对分区内的数据进行排序时，会设置RDD中的宽依赖（ShuffleDependency）实例的keyOrdering变量。
+   *
+   * 当需要对分区内部的数据进行排序时，构建RDD的同时会设置Key值的排序算法，
+   * 结合前面的read代码，当指定Key值的排序算法时，
+   * 就会使用外部排序器对分区内的数据进行排序
+   * 。
    */
   // TODO: this currently doesn't work on P other than Tuple2!
   def sortByKey(ascending: Boolean = true, numPartitions: Int = self.partitions.length)
       : RDD[(K, V)] = self.withScope
   {
+    // 注意，这里设置了该方法构建的RDD 使用的分区器
+    // 根据Range而非Hash进行分区，对应的Range信息需要计算并将结果
+    // 反馈到Driver端，因此对应调用RDD中的Action，即会触发一个Job的执行
     val part = new RangePartitioner(numPartitions, self, ascending)
+    // 在构建RDD实例后，设置Key的排序算法，即Ordering实例
     new ShuffledRDD[K, V, V](self, part)
       .setKeyOrdering(if (ascending) ordering else ordering.reverse)
   }

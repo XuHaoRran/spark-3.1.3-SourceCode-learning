@@ -211,7 +211,8 @@ private[spark] class BlockManager(
   private val maxOffHeapMemory = memoryManager.maxOffHeapStorageMemory
 
   private[spark] val externalShuffleServicePort = StorageUtils.externalShuffleServicePort(conf)
-
+  // BlockManagerId是BlockManager的唯一标识信息，BlockId是数据块的唯一信息，
+  // 对应的Seq[(BlockId, Long)]表示一组数据块标识ID及其数据块大小的元组信息
   var blockManagerId: BlockManagerId = _
 
   // Address of the server that serves this executor's shuffle files. This is either an external

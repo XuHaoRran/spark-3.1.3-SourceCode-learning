@@ -27,6 +27,9 @@ import org.apache.spark.util.collection.ExternalSorter
 
 /**
  * Fetches and reads the blocks from a shuffle by requesting them from other nodes' block stores.
+ *
+ * 通过从其他节点上请求读取 Shuffle 数据来接收并读取指定范围[起始分区。结束分区)一对应为左闭右开区间
+ * 通过从其他节点上请求读取 Shuffle 数据来接收并读取指定范围[起始分区，结束分区]对应为左闭右开区间
  */
 private[spark] class BlockStoreShuffleReader[K, C](
     handle: BaseShuffleHandle[K, _, C],
@@ -66,8 +69,12 @@ private[spark] class BlockStoreShuffleReader[K, C](
     doBatchFetch
   }
 
-  /** Read the combined key-values for this reduce task */
+  /** Read the combined key-values for this reduce task
+   * 为该Readuce任务合并key-values值
+   * */
   override def read(): Iterator[Product2[K, C]] = {
+    // 真正的数据Iterator读取是通过ShuffleBlockFetcherIterator来完成的
+    //
     val wrappedStreams = new ShuffleBlockFetcherIterator(
       context,
       blockManager.blockStoreClient,
@@ -87,6 +94,7 @@ private[spark] class BlockStoreShuffleReader[K, C](
     val serializerInstance = dep.serializer.newInstance()
 
     // Create a key/value iterator for each stream
+    // 为每个记录更新上下文任务度量
     val recordIter = wrappedStreams.flatMap { case (blockId, wrappedStream) =>
       // Note: the asKeyValueIterator below wraps a key/value iterator inside of a
       // NextIterator. The NextIterator makes sure that close() is called on the
@@ -103,28 +111,43 @@ private[spark] class BlockStoreShuffleReader[K, C](
       context.taskMetrics().mergeShuffleReadMetrics())
 
     // An interruptible iterator must be used here in order to support task cancellation
+    // 为了支持任务取消，这里必须使用可中断迭代器
     val interruptibleIter = new InterruptibleIterator[(Any, Any)](context, metricIter)
-
+    // 对读取到的数据进行聚合处理
     val aggregatedIter: Iterator[Product2[K, C]] = if (dep.aggregator.isDefined) {
       if (dep.mapSideCombine) {
         // We are reading values that are already combined
+        /// 如果在map端已经做了聚合的优化操作，则对读取道德聚合结果进行聚合
+        // 注意此时聚合操作与数据类型和map端未做优化时是不同的
         val combinedKeyValuesIterator = interruptibleIter.asInstanceOf[Iterator[(K, C)]]
+        // map端个分区针对key进行和并后的结果再次聚合
+        // map的合并可以大大减少网络传输的数据量
         dep.aggregator.get.combineCombinersByKey(combinedKeyValuesIterator, context)
       } else {
         // We don't know the value type, but also don't care -- the dependency *should*
         // have made sure its compatible w/ this aggregator, which will convert the value
         // type to the combined type C
+        // 无需关心值的类型，但确保聚合是兼容的，其将把值的类型转化成聚合以后的C类型
         val keyValuesIterator = interruptibleIter.asInstanceOf[Iterator[(K, Nothing)]]
         dep.aggregator.get.combineValuesByKey(keyValuesIterator, context)
       }
     } else {
       interruptibleIter.asInstanceOf[Iterator[Product2[K, C]]]
     }
-
+    // 在基于Sort的Shuffle 实现过程中，默认基于PartitionId进行排序
+    // 在分区的内部，数据是没有排序的，因此添加了 keyOrdering变量，提供
+    // 是否需要针对分区内的数据进行排序的标识信息
+    //如果定义了排序，则对输出结果进行排序
     // Sort the output if there is a sort ordering defined.
     val resultIter = dep.keyOrdering match {
       case Some(keyOrd: Ordering[K]) =>
         // Create an ExternalSorter to sort the data.
+        // 创建一个外部排序器来对数据进行排序
+        // 为了减少内存的压力，避免GC 开销，引入了外部排序器对数据进行排序，当内存不足
+        // 以容纳排序的数据量时，会根据配置的spark.shufflespill属性来决定是否需要
+        // 溢出到磁盘中，默认情况下会打开spill开关，若不打开spill开关，数据量比
+        // 较大时会引发内存溢出问题(OutofMemory，00M)
+
         val sorter =
           new ExternalSorter[K, C, C](context, ordering = Some(keyOrd), serializer = dep.serializer)
         sorter.insertAll(aggregatedIter)
@@ -137,14 +160,16 @@ private[spark] class BlockStoreShuffleReader[K, C](
         })
         CompletionIterator[Product2[K, C], Iterator[Product2[K, C]]](sorter.iterator, sorter.stop())
       case None =>
+        // 不需要排序分区内部数据时直接返回
         aggregatedIter
     }
-
+    // 如果任务已完成或取消，使用回调停止排序
     resultIter match {
       case _: InterruptibleIterator[Product2[K, C]] => resultIter
       case _ =>
         // Use another interruptible iterator here to support task cancellation as aggregator
         // or(and) sorter may have consumed previous interruptible iterator.
+        // 这里使用另一个可终端迭代器来支持任务取消，因为聚合器排序器可能已经使用了以前的可中断迭代器
         new InterruptibleIterator[Product2[K, C]](context, resultIter)
     }
   }

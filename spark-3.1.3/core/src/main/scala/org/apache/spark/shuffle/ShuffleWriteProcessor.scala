@@ -51,7 +51,8 @@ private[spark] class ShuffleWriteProcessor extends Serializable with Logging {
     try {
       // 实例化shuffleManager
       val manager = SparkEnv.get.shuffleManager
-      // 对writer对象赋值
+      // 然后从shuffleDependency中获取注册到ShuffleManager时得到的shufflehandle
+      // 根据shufflehandle和当前Task对应的分区ID，获取ShuffleWriter
       writer = manager.getWriter[Any, Any](
         dep.shuffleHandle,
         mapId,
