@@ -123,12 +123,12 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
       // 此时可以直接写文件，并在最后将文件合并
       new BypassMergeSortShuffleHandle[K, V](
         shuffleId, dependency.asInstanceOf[ShuffleDependency[K, V, V]])
-    } else if (SortShuffleManager.canUseSerializedShuffle(dependency)) {
+    } else if (SortShuffleManager.canUseSerializedShuffle(dependency)) { // 判断是否需要采用基于Tungsten Sort的Shuffle实现机制
       // Otherwise, try to buffer map outputs in a serialized form, since this is more efficient:
-      // 否则，试图Map输出缓冲区的序列化形式，因为这样效率更高
+      // 否则，试图Map输出缓冲区的序列化形式，因为这样效率更高的了啊
       new SerializedShuffleHandle[K, V](
         shuffleId, dependency.asInstanceOf[ShuffleDependency[K, V, V]])
-    } else {
+    } else { // 到这个位置才自动采用常规意义上的基于Sort的Shuffle实现机制
       // Otherwise, buffer map outputs in a deserialized form:
       // 否则，缓冲区map以反序列化的形式输出
       new BaseShuffleHandle(shuffleId, dependency)
