@@ -40,9 +40,12 @@ import org.apache.spark.util.io.ChunkedByteBuffer
 
 /**
  * Stores BlockManager blocks on disk.
+ *
+ * DiskStore是BlockManager中专门负责基于磁盘的数据存储和读写的类，与MemoryStore相对应
  */
 private[spark] class DiskStore(
     conf: SparkConf,
+    // 管理Logical Block与Disk上的Physical Block之间的映射关系并负责磁盘文件的创建、读写等
     diskManager: DiskBlockManager,
     securityManager: SecurityManager) extends Logging {
 

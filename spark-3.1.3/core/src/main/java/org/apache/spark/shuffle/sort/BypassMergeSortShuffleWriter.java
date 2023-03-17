@@ -161,7 +161,7 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
       // 配置为32KB，比早先的100KB降低了很多，但也说明不适合同时打开太多的DiskBlockObjectWriter实例
       for (int i = 0; i < numPartitions; i++) {
         final Tuple2<TempShuffleBlockId, File> tempShuffleBlockIdPlusFile =
-                // 其中调用的createTempShuffleBlock方法描述了各个分区生成的中间临时文件的格式与对应的BlockId
+                // 其中调用的createTempShuffleBlock方法描述了各个分区生成的中间临时文件的 格式与对应的BlockId
             blockManager.diskBlockManager().createTempShuffleBlock();
         final File file = tempShuffleBlockIdPlusFile._2();
         final BlockId blockId = tempShuffleBlockIdPlusFile._1();

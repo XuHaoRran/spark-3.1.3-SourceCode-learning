@@ -42,6 +42,11 @@ import org.apache.spark.util.Utils
  * We use the name of the shuffle data's shuffleBlockId with reduce ID set to 0 and add ".data"
  * as the filename postfix for data file, and ".index" as the filename postfix for index file.
  *
+ * IndexShuffle-BlockResolver创建和维护逻辑块和物理文件位置之间的shuffle blocks映射关系。
+ * 来自于相同map task任务的shuffle blocks数据存储在单个合并数据文件中；
+ * 数据文件中的数据块的偏移量存储在单独的索引文件中。将shuffleBlockId + reduce ID set to 0 + ".后缀"作为数据shuffle data的
+ * shuffleBlockId名字。其中，文件名后缀为".data"的是数据文件；文件名后缀为".index"的是索引文件
+ *
  */
 // Note: Changes to the format in this file should be kept in sync with
 // org.apache.spark.network.shuffle.ExternalShuffleBlockResolver#getSortBasedShuffleBlockData().

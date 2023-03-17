@@ -140,6 +140,7 @@ private[spark] class NettyBlockTransferService(
       if (maxRetries > 0) {
         // Note this Fetcher will correctly handle maxRetries == 0; we avoid it just in case there's
         // a bug in this code. We should remove the if statement once we're sure of the stability.
+        // 注意,Fetcher将正确处理maxRetries等于0的情况;避免它在代码中产生Bug//一旦确定了稳定性，就应该删除 if语句
         new RetryingBlockFetcher(transportConf, blockFetchStarter, blockIds, listener).start()
       } else {
         blockFetchStarter.createAndStart(blockIds, listener)
@@ -166,10 +167,14 @@ private[spark] class NettyBlockTransferService(
 
     // StorageLevel and ClassTag are serialized as bytes using our JavaSerializer.
     // Everything else is encoded using our binary protocol.
+    // 使用JavaSerializer序列化器将Storage和ClassTag序列化，其他一切用我们的二进制协议编码
     val metadata = JavaUtils.bufferToArray(serializer.newInstance().serialize((level, classTag)))
 
     // We always transfer shuffle blocks as a stream for simplicity with the receiving code since
     // they are always written to disk. Otherwise we check the block size.
+    // 其将blockData与MAX_REMOTE_BLOCK_SIZE_FETCH_TO_MEM进行比较。当块的大小高于此阈值时，远程块以字节为单位将被提取到磁盘。
+    // 这是为了避免一个大的请求占用太多的内存。通过设置特定值（例如200）可以启用这个配置
+    // 。注意，此配置将影响shuffle获取和块管理器远程块获取
     val asStream = (blockData.size() > conf.get(config.MAX_REMOTE_BLOCK_SIZE_FETCH_TO_MEM) ||
       blockId.isShuffle)
     val callback = new RpcResponseCallback {
@@ -186,10 +191,13 @@ private[spark] class NettyBlockTransferService(
       }
     }
     if (asStream) {
+      // client.uploadStream方法，将数据作为流发送到远程端，与stream()方法的不同之处在于，这是一个请求向远程端发送数据，
+      // 而不是从远程端接收数据。如果将blockData小于阈值，则将NIO缓冲区转换或复制到数组中，以便对其进行序列化。
       val streamHeader = new UploadBlockStream(blockId.name, metadata).toByteBuffer
       client.uploadStream(new NioManagedBuffer(streamHeader), blockData, callback)
     } else {
       // Convert or copy nio buffer into array in order to serialize it.
+      // 为了序列化，转换或复制NIO缓存到数组
       val array = JavaUtils.bufferToArray(blockData.nioByteBuffer())
 
       client.sendRpc(new UploadBlock(appId, execId, blockId.name, metadata, array).toByteBuffer,

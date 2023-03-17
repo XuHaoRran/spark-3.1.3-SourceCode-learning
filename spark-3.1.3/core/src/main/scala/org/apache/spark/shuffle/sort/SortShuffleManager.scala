@@ -153,6 +153,13 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
       metrics: ShuffleReadMetricsReporter): ShuffleReader[K, C] = {
     val blocksByAddress = SparkEnv.get.mapOutputTracker.getMapSizesByExecutorId(
       handle.shuffleId, startMapIndex, endMapIndex, startPartition, endPartition)
+    // BlockStoreShuffleReader实例的read方法，首先实例化new ShuffleBlockFetcherIterator。
+    // ShuffleBlockFetcherIterator是一个阅读器，里面有一个成员blockManager。
+    // blockManager是内存和磁盘上数据读写的统一管理器；ShuffleBlockFetcherIterator.scala的
+    // initialize方法中splitLocalRemoteBlocks()划分本地和远程的blocks，
+    // Utils.randomize(remoteRequests)把远程请求通过随机的方式添加到队列中，
+    // fetchUpToMaxBytes()发送远程请求获取我们的blocks，
+    // fetchLocalBlocks()获取本地的blocks。
     new BlockStoreShuffleReader(
       handle.asInstanceOf[BaseShuffleHandle[K, _, C]], blocksByAddress, context, metrics,
       shouldBatchFetch = canUseBatchFetch(startPartition, endPartition, context))
@@ -174,9 +181,13 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
     val env = SparkEnv.get
     // 通过ShuffleHandle类型的模式匹配，构建具体的数据写入器
     handle match {
+      // SerializedShuffleHandle对应的写入器为UnsafeShuffleWriter
+      // 使用的数据块逻辑与物理映射关系仍然为IndexShuffleBlockResolver，对应SortShuffleManager中的变量，因此相同
+      // 而该变量使用的是与基于Hash的Shuffle实现机制不同的解析类，即当前使用的IndexShuffleBlockResolver
       case unsafeShuffleHandle: SerializedShuffleHandle[K @unchecked, V @unchecked] =>
         new UnsafeShuffleWriter(
           env.blockManager,
+          // 构建了一个TaskMemoryManager实例并传入UnsafeShuffleWriter，TaskMemory与Task是一对一关系，负责管理分配给Task的内存
           context.taskMemoryManager(),
           unsafeShuffleHandle,
           mapId,
@@ -281,6 +292,8 @@ private[spark] object SortShuffleManager extends Logging {
 /**
  * Subclass of [[BaseShuffleHandle]], used to identify when we've chosen to use the
  * serialized shuffle.
+ *
+ * 基于Tungsten Sort的Shuffle实现机制使用的ShuffleHandle与ShuffleWriter分别为SerializedShuffleHandle与UnsafeShuffleWriter
  */
 private[spark] class SerializedShuffleHandle[K, V](
   shuffleId: Int,

@@ -50,6 +50,7 @@ class BlockManagerMasterEndpoint(
     conf: SparkConf,
     listenerBus: LiveListenerBus,
     externalBlockStoreClient: Option[ExternalBlockStoreClient],
+    // 为每个Executor的BlockManager生成对应的BlockManagerInfo。BlockManagerInfo是一个HashMap[BlockManagerId,BlockManagerInfo]
     blockManagerInfo: mutable.Map[BlockManagerId, BlockManagerInfo],
     mapOutputTracker: MapOutputTrackerMaster)
   extends IsolatedRpcEndpoint with Logging {
@@ -112,6 +113,7 @@ class BlockManagerMasterEndpoint(
     RpcUtils.makeDriverRef(CoarseGrainedSchedulerBackend.ENDPOINT_NAME, conf, rpcEnv)
 
   override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
+    // 接收Executor实例化BlockManager的信息，这个信息是RegisterBlockManager的
     case RegisterBlockManager(id, localDirs, maxOnHeapMemSize, maxOffHeapMemSize, endpoint) =>
       context.reply(register(id, localDirs, maxOnHeapMemSize, maxOffHeapMemSize, endpoint))
 
@@ -345,10 +347,12 @@ class BlockManagerMasterEndpoint(
     val info = blockManagerInfo(blockManagerId)
 
     // Remove the block manager from blockManagerIdByExecutor.
+    // 从blockManagerIdByExecutor删除块管理
     blockManagerIdByExecutor -= blockManagerId.executorId
     decommissioningBlockManagerSet.remove(blockManagerId)
 
     // Remove it from blockManagerInfo and remove all the blocks.
+    // 将它从blockManagerInfo删除所有的块
     blockManagerInfo.remove(blockManagerId)
 
     val iterator = info.blocks.keySet.iterator
@@ -361,12 +365,17 @@ class BlockManagerMasterEndpoint(
       // for unit testing), we send a message to a randomly chosen executor location to replicate
       // the given block. Note that we ignore other block types (such as broadcast/shuffle blocks
       // etc.) as replication doesn't make much sense in that context.
+
+      // 如果没有块管理器，就注销这个块。否则，如果主动复制启用，块block是一个RDD或测试快block，
+      // 发送一条信息随机选择Executor的位置来复制给定块block。
+      // 注意，此处忽略了其他块block类型（如广播broadcast shuffle blocks），因为复制在这种情况下没有多大意义
       if (locations.size == 0) {
         blockLocations.remove(blockId)
         logWarning(s"No more replicas available for $blockId !")
       } else if (proactivelyReplicate && (blockId.isRDD || blockId.isInstanceOf[TestBlockId])) {
         // As a heuristic, assume single executor failure to find out the number of replicas that
         // existed before failure
+        // 假设executor为能找出故障前存在的副本数量
         val maxReplicas = locations.size + 1
         val i = (new Random(blockId.hashCode)).nextInt(locations.size)
         val blockLocations = locations.toSeq
@@ -397,6 +406,7 @@ class BlockManagerMasterEndpoint(
 
   private def removeExecutor(execId: String): Unit = {
     logInfo("Trying to remove executor " + execId + " from BlockManagerMaster.")
+    // 从blockManagerIdByExecutor数据结构中清理掉block manager信息，从blockManagerInfo数据结构中清理掉所有的blocks信息
     blockManagerIdByExecutor.get(execId).foreach(removeBlockManager)
   }
 
@@ -528,6 +538,8 @@ class BlockManagerMasterEndpoint(
       storageEndpoint: RpcEndpointRef): BlockManagerId = {
     // the dummy id is not expected to contain the topology information.
     // we get that info here and respond back with a more fleshed out block manager id
+    // dummy id不应包含拓扑信息
+    // 在这里的得到信息和回应一个块标识符
     val id = BlockManagerId(
       idWithoutTopologyInfo.executorId,
       idWithoutTopologyInfo.host,
@@ -537,9 +549,12 @@ class BlockManagerMasterEndpoint(
     val time = System.currentTimeMillis()
     executorIdToLocalDirs.put(id.executorId, localDirs)
     if (!blockManagerInfo.contains(id)) {
+      // 如果blockManagerInfo没有包含BlockManagerId，
+      // 根据BlockManagerId.executorId查询BlockManagerId，如果匹配到旧的BlockManagerId，就进行清理
       blockManagerIdByExecutor.get(id.executorId) match {
         case Some(oldId) =>
           // A block manager of the same executor already exists, so remove it (assumed dead)
+          // 同一个Executor的block manager已经存在，所以删除它
           logError("Got two different block manager registrations on same executor - "
               + s" will replace old one $oldId with new one $id")
           removeExecutor(id.executorId)
@@ -547,7 +562,7 @@ class BlockManagerMasterEndpoint(
       }
       logInfo("Registering block manager %s with %s RAM, %s".format(
         id.hostPort, Utils.bytesToString(maxOnHeapMemSize + maxOffHeapMemSize), id))
-
+      // 将blockmanagerid加入blockmanagerinfo信息，在listenerBus中进行监听，函数返回BlockMnagerId,完成注册
       blockManagerIdByExecutor(id.executorId) = id
 
       val externalShuffleServiceBlockStatus =
@@ -767,11 +782,17 @@ object BlockStatus {
   def empty: BlockStatus = BlockStatus(StorageLevel.NONE, memSize = 0L, diskSize = 0L)
 }
 
+/**
+ * Driver使用BlockManagerInfo管理ExecutorBackend中BlockManager的元数据
+ *
+ * BlockManagerInfo中的BlockManagerId标明是哪个BlockManager，slaveEndpoint是消息循环体，用于消息通信
+ */
+
 private[spark] class BlockManagerInfo(
     val blockManagerId: BlockManagerId,
-    timeMs: Long,
-    val maxOnHeapMem: Long,
-    val maxOffHeapMem: Long,
+    timeMs: Long, // 系统当前时间timeMs
+    val maxOnHeapMem: Long, // 最大堆内内存maxOnHeapMem
+    val maxOffHeapMem: Long, // 最大堆外内存maxOffHeapMem
     val storageEndpoint: RpcEndpointRef,
     val externalShuffleServiceBlockStatus: Option[JHashMap[BlockId, BlockStatus]])
   extends Logging {

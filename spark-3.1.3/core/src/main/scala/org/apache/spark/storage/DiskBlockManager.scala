@@ -32,6 +32,12 @@ import org.apache.spark.util.{ShutdownHookManager, Utils}
  *
  * Block files are hashed among the directories listed in spark.local.dir (or in
  * SPARK_LOCAL_DIRS, if it's set).
+ *
+ * DiskBlockManager负责管理逻辑级别和物理级别的映射关系，
+ * 根据BlockID映射一个文件。在目录spark.local.dir或者SPARK_LOCAL_DIRS中，Block文件进行hash生成。
+ * 通过createLocalDirs生成
+ * 本地目录
+ * 。
  */
 private[spark] class DiskBlockManager(conf: SparkConf, deleteFilesOnStop: Boolean) extends Logging {
 
@@ -125,7 +131,10 @@ private[spark] class DiskBlockManager(conf: SparkConf, deleteFilesOnStop: Boolea
     (blockId, getFile(blockId))
   }
 
-  /** Produces a unique block id and File suitable for storing shuffled intermediate results. */
+  /** Produces a unique block id and File suitable for storing shuffled intermediate results.
+   *
+   * 调用的createTempShuffleBlock方法描述了各个分区所生成的中间临时文件的格式与对应的BlockId
+   * */
   def createTempShuffleBlock(): (TempShuffleBlockId, File) = {
     var blockId = new TempShuffleBlockId(UUID.randomUUID())
     while (getFile(blockId).exists()) {

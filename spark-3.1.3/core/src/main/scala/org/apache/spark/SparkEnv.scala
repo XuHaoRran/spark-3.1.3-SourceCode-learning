@@ -242,7 +242,7 @@ object SparkEnv extends Logging {
       ioEncryptionKey: Option[Array[Byte]],
       listenerBus: LiveListenerBus = null,
       mockOutputCommitCoordinator: Option[OutputCommitCoordinator] = None): SparkEnv = {
-
+    // 判断是否Driver
     val isDriver = executorId == SparkContext.DRIVER_IDENTIFIER
 
     // Listener bus is only used on the driver
@@ -317,7 +317,7 @@ object SparkEnv extends Logging {
     }
 
     val broadcastManager = new BroadcastManager(isDriver, conf, securityManager)
-
+    // 跟踪所有的Mapper的输出
     val mapOutputTracker = if (isDriver) {
       new MapOutputTrackerMaster(conf, broadcastManager, isLocal)
     } else {
@@ -338,6 +338,8 @@ object SparkEnv extends Logging {
     val shuffleMgrName = conf.get(config.SHUFFLE_MANAGER)
     val shuffleMgrClass =
       shortShuffleMgrNames.getOrElse(shuffleMgrName.toLowerCase(Locale.ROOT), shuffleMgrName)
+
+    // ShuffleManager是一个用于shuffle系统的可插拔接口。在Driver端SparkEnv中创建ShuffleManager，在每个Executor上也会创建。基于spark.shuffle.manager进行设置。
     val shuffleManager = instantiateClass[ShuffleManager](shuffleMgrClass)
 
     val memoryManager: MemoryManager = UnifiedMemoryManager(conf, numUsableCores)
@@ -357,7 +359,16 @@ object SparkEnv extends Logging {
     }
 
     // Mapping from block manager id to the block manager's information.
+    // 1.在Driver中是通过BlockManagerInfo来管理集群中每个ExecutorBackend中的BlockManager中的元数据信息的
+    // 2.当改变了具体的ExecutorBackend上的Block信息后，就必须发消息给Driver中的BlockManagerMaster来更新相应的BlockManagerInfo
+    // 3.当执行第二个Stage的时候，第二个Stage会向Driver中的MapOutputTracker-MasterEndpoint发消息请求上一个Stage中相应的输出，
+    // 此时MapOutputTrackerMaster会把上一个Stage的输出数据的元数据信息发送给当前请求的Stage
+    // 。
     val blockManagerInfo = new concurrent.TrieMap[BlockManagerId, BlockManagerInfo]()
+    // 创建BlockManagerMasterEndpoint
+    //
+    // BlockManagerMaster对整个集群的Block数据进行管理，Block是Spark数据管理的单位，与数据存储没有关系，
+    // 数据可能存在磁盘上，也可能存储在内存中，还可能存储在offline，如Alluxio上的了啊
     val blockManagerMaster = new BlockManagerMaster(
       registerOrLookupEndpoint(
         BlockManagerMaster.DRIVER_ENDPOINT_NAME,
@@ -376,6 +387,7 @@ object SparkEnv extends Logging {
         BlockManagerMaster.DRIVER_HEARTBEAT_ENDPOINT_NAME,
         new BlockManagerMasterHeartbeatEndpoint(rpcEnv, isLocal, blockManagerInfo)),
       conf,
+      // isDriver判断是否运行在Driver上的了啊
       isDriver)
 
     val blockTransferService =
@@ -383,6 +395,9 @@ object SparkEnv extends Logging {
         blockManagerPort, numUsableCores, blockManagerMaster.driverEndpoint)
 
     // NB: blockManager is not valid until initialize() is called later.
+    // 创建BlockManager
+    // 注：blockManager无效，直到initialize（）被调用
+    // 这里的BlockManagerMaster和BlockManager属于聚合关系
     val blockManager = new BlockManager(
       executorId,
       rpcEnv,
@@ -391,6 +406,8 @@ object SparkEnv extends Logging {
       conf,
       memoryManager,
       mapOutputTracker,
+      // shuffleManager是在SparkEnv中创建的，将shuffleManager传入到BlockManager，BlockManager就拥有shuffleManager的成员变量，
+      // 从而可以调用shuffleManager的相关方法
       shuffleManager,
       blockTransferService,
       securityManager,

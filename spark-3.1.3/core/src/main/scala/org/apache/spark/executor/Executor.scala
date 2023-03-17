@@ -149,6 +149,9 @@ private[spark] class Executor(
     }
 
   if (!isLocal) {
+    // 调用BlockManager的initialize方法，initialize方法将向BlockManagerMaster注册，完成Executor中的BlockManager向
+    // Driver中的BlockManager注册
+    //
     env.blockManager.initialize(conf.getAppId)
     env.metricsSystem.registerSource(executorSource)
     env.metricsSystem.registerSource(new JVMCPUSource())
@@ -1039,7 +1042,7 @@ private[spark] class Executor(
         accumUpdates += ((taskRunner.taskId, accumulatorsToReport))
       }
     }
-
+    // Executor每隔10s向Master发送心跳信息，如果收不到心跳信息，blockManager须重新中蹙额
     val message = Heartbeat(executorId, accumUpdates.toArray, env.blockManager.blockManagerId,
       executorUpdates)
     try {

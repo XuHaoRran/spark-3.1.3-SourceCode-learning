@@ -31,6 +31,8 @@ import org.apache.spark.util.ThreadUtils
 /**
  * The BlockTransferService that used for fetching a set of blocks at time. Each instance of
  * BlockTransferService contains both client and server inside.
+ *
+ * BlockTransferService.scala进行网络连接操作，获取远程数据的
  */
 private[spark]
 abstract class BlockTransferService extends BlockStoreClient {
@@ -76,7 +78,9 @@ abstract class BlockTransferService extends BlockStoreClient {
       blockId: String,
       tempFileManager: DownloadFileManager): ManagedBuffer = {
     // A monitor for the thread to wait on.
+    // 线程等待的监视器
     val result = Promise[ManagedBuffer]()
+    // 这里获取block
     fetchBlocks(host, port, execId, Array(blockId),
       new BlockFetchingListener {
         override def onBlockFetchFailure(blockId: String, exception: Throwable): Unit = {
