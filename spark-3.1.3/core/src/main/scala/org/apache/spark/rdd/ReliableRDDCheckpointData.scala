@@ -56,9 +56,13 @@ private[spark] class ReliableRDDCheckpointData[T: ClassTag](@transient private v
    * This is called immediately after the first action invoked on this RDD has completed.
    */
   protected override def doCheckpoint(): CheckpointRDD[T] = {
+    // doCheckpoint，在生产过程中会导致ReliableCheckpointRDD的writeRDDToCheckpointDirectory的调用，
+    // 而在writeRDDToCheckpointDirectory方法内部，会触发runJob来执行把当前的RDD中的数据写到checkpoint的目录中，
+    // 同时会产生ReliableCheckpointRDD实例
     val newRDD = ReliableCheckpointRDD.writeRDDToCheckpointDirectory(rdd, cpDir)
 
     // Optionally clean our checkpoint files if the reference is out of scope
+    // 如果引用超出范围，则可选地清理检查点文件
     if (rdd.conf.get(CLEANER_REFERENCE_TRACKING_CLEAN_CHECKPOINTS)) {
       rdd.context.cleaner.foreach { cleaner =>
         cleaner.registerRDDCheckpointDataForCleanup(newRDD, rdd.id)
@@ -78,7 +82,9 @@ private[spark] object ReliableRDDCheckpointData extends Logging {
     sc.checkpointDir.map { dir => new Path(dir, s"rdd-$rddId") }
   }
 
-  /** Clean up the files associated with the checkpoint data for this RDD. */
+  /** Clean up the files associated with the checkpoint data for this RDD.
+   * 清理RDD数据相关的checkpoint文件。
+   * */
   def cleanCheckpoint(sc: SparkContext, rddId: Int): Unit = {
     checkpointPath(sc, rddId).foreach { path =>
       path.getFileSystem(sc.hadoopConfiguration).delete(path, true)

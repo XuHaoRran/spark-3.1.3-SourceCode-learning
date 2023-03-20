@@ -579,6 +579,7 @@ private[spark] class Executor(
         // If the task has been killed, let's fail it.
         task.context.killTaskIfInterrupted()
 
+        // 把task.run的执行结果value序列化
         val resultSer = env.serializer.newInstance()
         val beforeSerializationNs = System.nanoTime()
         val valueBytes = resultSer.serialize(value)
@@ -653,7 +654,9 @@ private[spark] class Executor(
         // 并返回该IndirectTaskResult对象，IndirectTaskResult对象中包含结果所在的BlockId，
         // 在SchedulerBackend中可以通过BlockManager获得该BlockId对应的结果数据，这里的maxResultSize默认为1GB
         val serializedResult: ByteBuffer = {
+          // 对任务执行结果的大小进行判断，并进行相应的处理，任务执行完以后，任务的执行结果最大可以达到1GB
           if (maxResultSize > 0 && resultSize > maxResultSize) {
+            // 如果任务执行结果特别大，超过1GB，日志就会提示超出任务大小限制
             logWarning(s"Finished $taskName. Result is larger than maxResultSize " +
               s"(${Utils.bytesToString(resultSize)} > ${Utils.bytesToString(maxResultSize)}), " +
               s"dropping it.")
@@ -666,6 +669,7 @@ private[spark] class Executor(
               new ChunkedByteBuffer(serializedDirectResult.duplicate()),
               StorageLevel.MEMORY_AND_DISK_SER)
             logInfo(s"Finished $taskName. $resultSize bytes result sent via BlockManager)")
+            // 返回元数据ser.serialize(new IndirectTaskResult[Any](blockId, resultSize))
             ser.serialize(new IndirectTaskResult[Any](blockId, resultSize))
           } else {
             // 直接返回DirectTaskResult，这是在resultSize小于Akka帧大小的情况下采取的默认返回方式
@@ -965,6 +969,9 @@ private[spark] class Executor(
   /**
    * Download any missing dependencies if we receive a new set of files and JARs from the
    * SparkContext. Also adds any new JARs we fetched to the class loader.
+   *
+   * Executor的updateDependencies方法中，Executor运行具体任务时进行下载，下载文件使用synchronized关键字，因为Executor在线程中运行，
+   * 同一个Stage内部不同的任务线程要共享这些内容，因此ExecutorBackend多条线程资源操作的时候，需要通过同步块加锁。
    */
   private def updateDependencies(
       newFiles: Map[String, Long],
@@ -973,9 +980,12 @@ private[spark] class Executor(
     lazy val hadoopConf = SparkHadoopUtil.get.newConfiguration(conf)
     synchronized {
       // Fetch missing dependencies
+      // 获取将要计算的依赖关系
       for ((name, timestamp) <- newFiles if currentFiles.getOrElse(name, -1L) < timestamp) {
         logInfo(s"Fetching $name with timestamp $timestamp")
         // Fetch file with useCache mode, close cache for local mode.
+        // 使用useCache获取文件，本地模式关闭缓存
+        // 将文件或目录下载到目标目录，支持各种方式获取文件，包括HTTP，Hadoop兼容的文件系统、标准文件系统的文件，基于URL参数
         Utils.fetchFile(name, new File(SparkFiles.getRootDirectory()), conf,
           env.securityManager, hadoopConf, timestamp, useCache = !isLocal)
         currentFiles(name) = timestamp
@@ -984,6 +994,7 @@ private[spark] class Executor(
         logInfo(s"Fetching $name with timestamp $timestamp")
         val sourceURI = new URI(name)
         val uriToDownload = UriBuilder.fromUri(sourceURI).fragment(null).build()
+        // 使用cacheCahce获取文件，本地模式关闭缓存
         val source = Utils.fetchFile(uriToDownload.toString, Utils.createTempDir(), conf,
           env.securityManager, hadoopConf, timestamp, useCache = !isLocal, shouldUntar = false)
         val dest = new File(
@@ -1007,6 +1018,7 @@ private[spark] class Executor(
             env.securityManager, hadoopConf, timestamp, useCache = !isLocal)
           currentJars(name) = timestamp
           // Add it to our class loader
+          // 将它增加到类装入器zhong
           val url = new File(SparkFiles.getRootDirectory(), localName).toURI.toURL
           if (!urlClassLoader.getURLs().contains(url)) {
             logInfo(s"Adding $url to class loader")

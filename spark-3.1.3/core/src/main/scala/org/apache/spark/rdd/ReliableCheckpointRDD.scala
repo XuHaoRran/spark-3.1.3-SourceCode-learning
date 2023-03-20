@@ -52,6 +52,8 @@ private[spark] class ReliableCheckpointRDD[T: ClassTag](
 
   /**
    * Return the path of the checkpoint directory this RDD reads data from.
+   *
+   *
    */
   override val getCheckpointFile: Option[String] = Some(checkpointPath)
 
@@ -64,9 +66,14 @@ private[spark] class ReliableCheckpointRDD[T: ClassTag](
   /**
    * Return partitions described by the files in the checkpoint directory.
    *
+   * 构建一个一个的分片
+   *
    * Since the original RDD may belong to a prior application, there is no way to know a
    * priori the number of partitions to expect. This method assumes that the original set of
    * checkpoint files are fully preserved in a reliable storage across application lifespans.
+   *
+   * 返回检查点目录中的文件所描述的分区由于原来的 RDD 可能属于一-个之前的应用，
+   * 没办法知道之前的分区数。此方法假定在应用生命周期，原始集检查点文件完全保存在可靠的存储里面
    */
   protected override def getPartitions: Array[Partition] = {
     // listStatus can throw exception if path does not exist.
@@ -99,6 +106,7 @@ private[spark] class ReliableCheckpointRDD[T: ClassTag](
   private def getPartitionBlockLocations(split: Partition): Seq[String] = {
     val status = fs.getFileStatus(
       new Path(checkpointPath, ReliableCheckpointRDD.checkpointFileName(split.index)))
+    // 获取文件的位置信息
     val locations = fs.getFileBlockLocations(status, 0, status.getLen)
     locations.headOption.toList.flatMap(_.getHosts).filter(_ != "localhost")
   }
@@ -108,6 +116,8 @@ private[spark] class ReliableCheckpointRDD[T: ClassTag](
 
   /**
    * Return the locations of the checkpoint file associated with the given partition.
+   *
+   * 获取文件本地性
    */
   protected override def getPreferredLocations(split: Partition): Seq[String] = {
     if (cachedExpireTime.isDefined && cachedExpireTime.get > 0) {
@@ -119,6 +129,8 @@ private[spark] class ReliableCheckpointRDD[T: ClassTag](
 
   /**
    * Read the content of the checkpoint file associated with the given partition.
+   *
+   * 通过ReliableCheckpointRDD.readCheckpointFile读取数据
    */
   override def compute(split: Partition, context: TaskContext): Iterator[T] = {
     val file = new Path(checkpointPath, ReliableCheckpointRDD.checkpointFileName(split.index))
@@ -148,10 +160,11 @@ private[spark] object ReliableCheckpointRDD extends Logging {
       checkpointDir: String,
       blockSize: Int = -1): ReliableCheckpointRDD[T] = {
     val checkpointStartTimeNs = System.nanoTime()
-
+    // 首先找到sparkContext，赋值给sc变量
     val sc = originalRDD.sparkContext
 
     // Create the output path for the checkpoint
+    // 首先找到sparkContext，赋值给sc变量
     val checkpointDirPath = new Path(checkpointDir)
     val fs = checkpointDirPath.getFileSystem(sc.hadoopConfiguration)
     if (!fs.mkdirs(checkpointDirPath)) {
@@ -159,9 +172,11 @@ private[spark] object ReliableCheckpointRDD extends Logging {
     }
 
     // Save to file, and reload it as an RDD
+    // 然后是广播sc.broadcast，将路径信息广播给所有的Executor。
     val broadcastedConf = sc.broadcast(
       new SerializableConfiguration(sc.hadoopConfiguration))
     // TODO: This is expensive because it computes the RDD again unnecessarily (SPARK-8582)
+    // 会触发runJob来执行把当前的RDD中的数据写到checkpoint的目录中，同时会产生ReliableCheckpointRDD实例。
     sc.runJob(originalRDD,
       writePartitionToCheckpointFile[T](checkpointDirPath.toString, broadcastedConf) _)
 
@@ -182,6 +197,7 @@ private[spark] object ReliableCheckpointRDD extends Logging {
           s"Checkpoint RDD [ID: ${newRDD.id}, num of partitions: " +
           s"${newRDD.partitions.length}].")
     }
+
     newRDD
   }
 
@@ -326,9 +342,11 @@ private[spark] object ReliableCheckpointRDD extends Logging {
       }
     }
     val serializer = env.serializer.newInstance()
+    // 通过deserializeStream反序列化fileInputStream文件输入流，然后将deserializeStream变成一个Iterator
     val deserializeStream = serializer.deserializeStream(fileInputStream)
 
     // Register an on-task-completion callback to close the input stream.
+    // 注册一个任务完成回调，关闭输入流
     context.addTaskCompletionListener[Unit](context => deserializeStream.close())
 
     deserializeStream.asIterator.asInstanceOf[Iterator[T]]

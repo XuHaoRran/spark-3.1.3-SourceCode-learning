@@ -932,6 +932,7 @@ private[spark] class TaskSchedulerImpl(
       taskSetManager: TaskSetManager,
       tid: Long,
       taskResult: DirectTaskResult[_]): Unit = synchronized {
+    // 交给taskSetManager调用handleSuccessfulTask
     taskSetManager.handleSuccessfulTask(tid, taskResult)
   }
 

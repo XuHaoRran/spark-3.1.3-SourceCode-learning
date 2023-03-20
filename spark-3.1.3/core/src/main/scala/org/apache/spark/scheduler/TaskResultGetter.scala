@@ -38,6 +38,7 @@ private[spark] class TaskResultGetter(sparkEnv: SparkEnv, scheduler: TaskSchedul
   private val THREADS = sparkEnv.conf.getInt("spark.resultGetter.threads", 4)
 
   // Exposed for testing.
+  // 用于测试
   protected val getTaskResultExecutor: ExecutorService =
     ThreadUtils.newDaemonFixedThreadPool(THREADS, "task-result-getter")
 
@@ -58,11 +59,13 @@ private[spark] class TaskResultGetter(sparkEnv: SparkEnv, scheduler: TaskSchedul
       taskSetManager: TaskSetManager,
       tid: Long,
       serializedData: ByteBuffer): Unit = {
+    // TaskResultGetter.scala的enqueueSuccessfulTask方法中，处理成功任务的时候开辟了一条新线程，
+    // 先将结果反序列化，然后根据接收的结果类型DirectTaskResult、IndirectTaskResult分别处理
     getTaskResultExecutor.execute(new Runnable {
       override def run(): Unit = Utils.logUncaughtExceptions {
         try {
           val (result, size) = serializer.get().deserialize[TaskResult[_]](serializedData) match {
-            case directResult: DirectTaskResult[_] =>
+            case directResult: DirectTaskResult[_] => // 直接获得结果并返回
               if (!taskSetManager.canFetchMoreResults(serializedData.limit())) {
                 // kill the task so that it will not become zombie task
                 scheduler.handleFailedTask(taskSetManager, tid, TaskState.KILLED, TaskKilled(
@@ -74,7 +77,7 @@ private[spark] class TaskResultGetter(sparkEnv: SparkEnv, scheduler: TaskSchedul
               // "TaskSetManager.handleSuccessfulTask", it does not need to deserialize the value.
               directResult.value(taskResultSerializer.get())
               (directResult, serializedData.limit())
-            case IndirectTaskResult(blockId, size) =>
+            case IndirectTaskResult(blockId, size) => // 就通过blockManager.getRemoteBytes远程获取，获取以后再进行反序列化
               if (!taskSetManager.canFetchMoreResults(size)) {
                 // dropped by executor if size is larger than maxResultSize
                 sparkEnv.blockManager.master.removeBlock(blockId)

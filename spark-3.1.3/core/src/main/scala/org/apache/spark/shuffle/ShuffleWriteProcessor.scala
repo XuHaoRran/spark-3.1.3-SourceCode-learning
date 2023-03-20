@@ -60,6 +60,7 @@ private[spark] class ShuffleWriteProcessor extends Serializable with Logging {
         createMetricsReporter(context))
       // 将计算结果通过writer对象的write方法写入shuffle过程
       writer.write(
+        // 会调用RDD的iterator，然后针对partition进行计算
         rdd.iterator(partition, context).asInstanceOf[Iterator[_ <: Product2[Any, Any]]])
       writer.stop(success = true).get
     } catch {

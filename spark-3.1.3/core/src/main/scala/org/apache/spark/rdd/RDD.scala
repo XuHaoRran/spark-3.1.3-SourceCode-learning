@@ -391,6 +391,7 @@ abstract class RDD[T: ClassTag](
     if (isCheckpointedAndMaterialized) {
       firstParent[T].iterator(split, context)
     } else {
+      // 具体计算有具体的RDD，如果MapPartitionsRDD的compute，传进去的Partition及TaskContext上下文
       compute(split, context)
     }
   }
@@ -1649,6 +1650,7 @@ abstract class RDD[T: ClassTag](
     // NOTE: we use a global lock here due to complexities downstream with ensuring
     // children RDD partitions point to the correct parent partitions. In the future
     // we should revisit this consideration.
+    // 注意：我们在这里使用全局锁，原因是下游的复杂性：子RDD分区指向正确的父分区，未来我们应该重新考虑这个问题
     if (context.checkpointDir.isEmpty) {
       throw new SparkException("Checkpoint directory has not been set in the SparkContext")
     } else if (checkpointData.isEmpty) {
@@ -1702,6 +1704,7 @@ abstract class RDD[T: ClassTag](
     // We must not override our `checkpointData` in this case because it is needed to recover
     // the checkpointed data. If it is overridden, next time materializing on this RDD will
     // cause error.
+    // 判断这个RDD是否checkpointed和被物化
     if (isCheckpointedAndMaterialized) {
       logWarning("Not marking RDD for local checkpoint because it was already " +
         "checkpointed and materialized")

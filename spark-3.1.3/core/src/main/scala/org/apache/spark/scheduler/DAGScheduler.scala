@@ -1757,6 +1757,7 @@ private[spark] class DAGScheduler(
       case Success =>
         task match {
           case rt: ResultTask[_, _] =>
+            // 因为ResultTask的一部分，所以对应ResultStage
             val resultStage = stage.asInstanceOf[ResultStage]
             resultStage.activeJob match {
               case Some(job) =>
@@ -1786,6 +1787,7 @@ private[spark] class DAGScheduler(
 
         task match {
           case rt: ResultTask[_, _] =>
+            // 因为是ResultTask的一部分，所以对应为ResultStage
             // Cast to ResultStage here because it's part of the ResultTask
             // TODO Refactor this out to a function that accepts a ResultStage
             val resultStage = stage.asInstanceOf[ResultStage]
@@ -1834,6 +1836,8 @@ private[spark] class DAGScheduler(
 
           case smt: ShuffleMapTask =>
             val shuffleStage = stage.asInstanceOf[ShuffleMapStage]
+            // 从挂起的分区中删除任务的分区，这可能已完成，但在任务为阶段的早期尝试
+            // 这允许DagScheduler在每一个任务的副本已完成的情况下，标记阶段完成，即使当前活动阶段任务仍在运行
             shuffleStage.pendingPartitions -= task.partitionId
             val status = event.result.asInstanceOf[MapStatus]
             val execId = status.location.executorId
@@ -1845,6 +1849,10 @@ private[spark] class DAGScheduler(
               // The epoch of the task is acceptable (i.e., the task was launched after the most
               // recent failure we're aware of for the executor), so mark the task's output as
               // available.
+              // //我们设置为 true，来递增纪元编号，以防止map 输出重新计算。在这种情况下，
+              // 一些节点可能已经缓存了损坏的位置(从我们检测到的错误)，将需要纪元编号递增来
+              // 重取它们
+              // 待办事项:如果这不是第一次，那么只增加纪元编号，我们注册了 map输出
               mapOutputTracker.registerMapOutput(
                 shuffleStage.shuffleDep.shuffleId, smt.partitionId, status)
             }
@@ -1868,6 +1876,8 @@ private[spark] class DAGScheduler(
               clearCacheLocs()
 
               if (!shuffleStage.isAvailable) {
+                // 有些任务已经失败了，重新提交shuffleStage
+                // 代办事项：低级调度器也应该能处理这个问题i
                 // Some tasks had failed; let's resubmit this shuffleStage.
                 // TODO: Lower-level scheduler should also deal with this
                 logInfo("Resubmitting " + shuffleStage + " (" + shuffleStage.name +

@@ -2489,6 +2489,8 @@ class SparkContext(config: SparkConf) extends Logging {
     // Otherwise, the driver may attempt to reconstruct the checkpointed RDD from
     // its own local file system, which is incorrect because the checkpoint files
     // are actually on the executor machines.
+    // 如果在集群上运行，如目录是本地的，则记录一个警告。否则，driver
+    // 可能会试图从它自己的本地文件系统重建RDD的checkpoint 检测点，因为checkpoint 检查点文件不正确。实际上是在Executor机器上
     if (!isLocal && Utils.nonLocalPaths(directory).isEmpty) {
       logWarning("Spark is not running in local mode, therefore the checkpoint directory " +
         s"must not be on the local filesystem. Directory '$directory' " +

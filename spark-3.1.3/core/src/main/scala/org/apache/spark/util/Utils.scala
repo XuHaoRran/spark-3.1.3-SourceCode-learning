@@ -507,6 +507,7 @@ private[spark] object Utils extends Logging {
     val targetFile = new File(targetDir, fileName)
     val fetchCacheEnabled = conf.getBoolean("spark.files.useFetchCache", defaultValue = true)
     if (useCache && fetchCacheEnabled) {
+      // 第一次尝试取文件到本地缓存，执行同一应用程序进行共享。
       val cachedFileName = s"${url.hashCode}${timestamp}_cache"
       val lockFileName = s"${url.hashCode}${timestamp}_lock"
       // Set the cachedLocalDir for the first time and re-use it later

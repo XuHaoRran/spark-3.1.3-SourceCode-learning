@@ -1017,6 +1017,7 @@ private[spark] class BlockManager(
 
     // Because all the remote blocks are registered in driver, it is not necessary to ask
     // all the storage endpoints to get block status.
+    // 因为所有的远程块都注册在driver中，所以不需要要求所有的从执行器获取块状态
     val locationsAndStatusOption = master.getLocationsAndStatus(blockId, blockManagerId.host)
     if (locationsAndStatusOption.isEmpty) {
       logDebug(s"Block $blockId is unknown by block manager master")
@@ -1082,6 +1083,7 @@ private[spark] class BlockManager(
     // If the block size is above the threshold, we should pass our FileManger to
     // BlockTransferService, which will leverage it to spill the block; if not, then passed-in
     // null value means the block will be persisted in memory.
+    // 如果块大小超过阈值，将FileManager传递给BlockTransferService，利用它来溢出块；如果没有，传递空值意味着块将持久存在内存中。
     val tempFileManager = if (blockSize > maxRemoteBlockToMem) {
       remoteBlockTempFileManager
     } else {
@@ -1089,6 +1091,7 @@ private[spark] class BlockManager(
     }
     var runningFailureCount = 0
     var totalFailureCount = 0
+    // sortLocations方法返回给定块的位置列表，本地计算机的优先级从多个块管理器可以共享同一个主机，然后是同一机架上的主机
     val locations = sortLocations(locationsAndStatus.locations)
     val maxFetchFailures = locations.size
     var locationIterator = locations.iterator
@@ -1107,7 +1110,7 @@ private[spark] class BlockManager(
         case NonFatal(e) =>
           runningFailureCount += 1
           totalFailureCount += 1
-
+          // 放弃尝试的位置。要么我们已经尝试了所有的原始位置,或者我们已经从master节点刷新了位置列表，并且仍然在刷新列表中尝试位置后命中失败
           if (totalFailureCount >= maxFetchFailures) {
             // Give up trying anymore locations. Either we've tried all of the original locations,
             // or we've refreshed the list of locations from the master, and have still
@@ -1124,7 +1127,10 @@ private[spark] class BlockManager(
           // large number of stale entries causing a large number of retries that may
           // take a significant amount of time. To get rid of these stale entries
           // we refresh the block locations after a certain number of fetch failures
+          // 如果有大量的 Executors，那么位置列表可以包含一个旧的条目造成大量重试，可能花费大量的时间。
+          // 在一定数量的获取失败之后，为去掉这些旧的条目，我们刷新块位置
           if (runningFailureCount >= maxFailuresBeforeLocationRefresh) {
+            // 如果有大量执行者，则位置列表可以包含大量过时的条目导致大量重试，可能花大量的时间。除去这些陈旧的条目，在一定数量的提取失败后刷新块位置
             locationIterator = sortLocations(master.getLocations(blockId)).iterator
             logDebug(s"Refreshed locations from the driver " +
               s"after ${runningFailureCount} fetch failures.")
@@ -1132,6 +1138,7 @@ private[spark] class BlockManager(
           }
 
           // This location failed, so we retry fetch from a different one by returning null here
+          // 此位置失败，所以我们尝试从不同的位置获取，这里返回一个 null
           null
       }
 
@@ -1200,6 +1207,7 @@ private[spark] class BlockManager(
    * automatically be freed once the result's `data` iterator is fully consumed.
    */
   def get[T: ClassTag](blockId: BlockId): Option[BlockResult] = {
+    // 如果数据在本地，get方法调用getLocalValues获取数据
     val local = getLocalValues(blockId)
     if (local.isDefined) {
       logInfo(s"Found block $blockId locally")
@@ -1267,32 +1275,49 @@ private[spark] class BlockManager(
       makeIterator: () => Iterator[T]): Either[BlockResult, Iterator[T]] = {
     // Attempt to read the block from local or remote storage. If it's present, then we don't need
     // to go through the local-get-or-put path.
+    // 尝试从本地或远程存储读取块。如果它存在，那么就不需要通过本地get或put路径获取
+    // 根据blockId调用了这个方法，get方法从block块manager（本地或远程）获取一个block，如果block在本地存储没且没获得锁，
+    // 则先获取块block的读取锁， 如果该块是从远程块管理器获取的，当data迭代器被完全消费以后，那么读取锁将自动释放。
+    // get的时候，如果本地有数据，从本地获取数据返回，如果没有数据，则从远程节点获取数据
     get[T](blockId)(classTag) match {
       case Some(block) =>
         return Left(block)
       case _ =>
+            // 需要计算快
         // Need to compute the block.
     }
     // Initially we hold no locks on this block.
+    // 需要计算blockInitially，在块上我们没有锁
+    //
+    // 没有获取到缓存数据， makeIterator就是getOrElseUpdate方法中传入的匿名函数，在匿名函数中获取到Iterator数据
+    //
+    // doPutIterator将makeIterator从父RDD的checkpoint读取的数据或者重新计算的数据存放到内存中，如果内存不够，就溢出到磁盘中持久化
     doPutIterator(blockId, makeIterator, level, classTag, keepReadLock = true) match {
       case None =>
         // doPut() didn't hand work back to us, so the block already existed or was successfully
         // stored. Therefore, we now hold a read lock on the block.
+        // 读取锁
+        // doput()方法没有返回，所以块已存在或者已成功存储。因此，我们现在在块上持有
         val blockResult = getLocalValues(blockId).getOrElse {
           // Since we held a read lock between the doPut() and get() calls, the block should not
           // have been evicted, so get() not returning the block indicates some internal error.
+          //在 doPut()和 get()方法调用的时候，我们持有读取锁，块不应被驱逐，这样，get()方法没返回块，表示发生一些内部错误
           releaseLock(blockId)
           throw new SparkException(s"get() failed for block $blockId even though we held a lock")
         }
         // We already hold a read lock on the block from the doPut() call and getLocalValues()
         // acquires the lock again, so we need to call releaseLock() here so that the net number
         // of lock acquisitions is 1 (since the caller will only call release() once).
+        // 我们已经持有调用 doPutO)方法在块上的读取锁，getLocalValues再一次获取锁，
+        // 所以我们需要调用releaseLock(),这样获取锁的数量是1(因为调用者只releaseO)一次)
         releaseLock(blockId)
         Left(blockResult)
       case Some(iter) =>
         // The put failed, likely because the data was too large to fit in memory and could not be
         // dropped to disk. Therefore, we need to pass the input iterator back to the caller so
         // that they can decide what to do with the values (e.g. process them without caching).
+        // 输入失败，可能是因为数据太大而不能存储在内存中，不能溢出到磁盘上。
+        // 因此，我们需要将输入迭代器传递给调用者，他们可以决定如何处理这些值(例如，不缓存它们)
        Right(iter)
     }
   }
@@ -1460,17 +1485,23 @@ private[spark] class BlockManager(
       val startTimeNs = System.nanoTime()
       var iteratorFromFailedMemoryStorePut: Option[PartiallyUnrolledIterator[T]] = None
       // Size of the block in bytes
+      // 块的大小为字节
       var size = 0L
       if (level.useMemory) {
+        // 首先把它放在内存中，即使useDisk 设置为 true;如果内存存储不能保存，我们
+        // 稍后会把它放在磁盘上
+        //
         // 如果level.useMemory，则在memoryStore中放入数据
         // Put it in memory first, even if it also has useDisk set to true;
         // We will drop it to disk later if the memory store can't hold it.
+        //
         if (level.deserialized) {
           memoryStore.putIteratorAsValues(blockId, iterator(), classTag) match {
             case Right(s) =>
               size = s
             case Left(iter) =>
               // Not enough space to unroll this block; drop to disk if applicable
+              // 没有足够的空间来展开块，如果使用，可以溢出到磁盘
               if (level.useDisk) {
                 logWarning(s"Persisting block $blockId to disk instead.")
                 diskStore.put(blockId) { channel =>
@@ -1488,6 +1519,7 @@ private[spark] class BlockManager(
               size = s
             case Left(partiallySerializedValues) =>
               // Not enough space to unroll this block; drop to disk if applicable
+              // 没有足够的空间来展开块；如果使用，可以溢出到磁盘
               if (level.useDisk) {
                 logWarning(s"Persisting block $blockId to disk instead.")
                 diskStore.put(blockId) { channel =>
@@ -1514,6 +1546,7 @@ private[spark] class BlockManager(
       val blockWasSuccessfullyStored = putBlockStatus.storageLevel.isValid
       if (blockWasSuccessfullyStored) {
         // Now that the block is in either the memory or disk store, tell the master about it.
+        // 现在块位于内存或磁盘存储中，通知master
         info.size = size
         if (tellMaster && info.tellMaster) {
           reportBlockStatus(blockId, putBlockStatus)

@@ -46,6 +46,13 @@ import org.apache.spark.util.collection.MedianHeap
  * THREADING: This class is designed to only be called from code with a lock on the
  * TaskScheduler (e.g. its event handlers). It should not be called from other threads.
  *
+ * TaskSetManager：单TaskSet的任务调度在TaskSchedulerImpl中进行。TaskSetManager类跟踪每项任务，
+ * 如果任务重试失败（超过有限的次数），
+ * 对于TaskSet处理本地调度主要的接口是resourceOffer，询问TaskSet是否要在一个节点上运行任务，
+ * 进行状态更新statusUpdate，告诉TaskSet的一个任务的状态发生了改变（如已完成）。
+ * 线程：这个类被设计成只在具有锁的代码TaskScheduler上调用（如事件处理程序），不应该从其他线程调用。
+ *
+ *
  * @param sched           the TaskSchedulerImpl associated with the TaskSetManager
  * @param taskSet         the TaskSet to manage scheduling for
  * @param maxTaskFailures if any particular task fails this number of times, the entire
@@ -751,6 +758,7 @@ private[spark] class TaskSetManager(
 
     // Kill any other attempts for the same task (since those are unnecessary now that one
     // attempt completed successfully).
+    // 杀掉同一人物的任何其他尝试，因为现在不需要这些任务，所以一次尝试成功
     for (attemptInfo <- taskAttempts(index) if attemptInfo.running) {
       logInfo(s"Killing attempt ${attemptInfo.attemptNumber} for ${taskName(attemptInfo.taskId)}" +
         s" on ${attemptInfo.host} as the attempt ${info.attemptNumber} succeeded on ${info.host}")
@@ -781,6 +789,14 @@ private[spark] class TaskSetManager(
     // Note: "result.value()" only deserializes the value when it's called at the first time, so
     // here "result.value()" just returns the value and won't block other threads.
     // DAGScheduler.taskEnded
+    // //此方法由TaskSchedulerImpl.handleSuccessfulTask 调用将TaskSchedulerImpl
+    // 锁定，直到退出
+    // 为了避免SPARK-7655问题，不应该“反序列化持有锁时的值，以避免阻塞其他线程
+    // 所以调用TaskResultGetter.enqueueSuccessfulTask中的result.value()
+    // 注意，“result_valueO”只在第一次调用时反序列化该值，因此这里的“result.
+    // valueC)”只返回值，不会阻塞其他线程
+    //
+    // 汇报任务完成或者失败。将任务完成的事件CompletionEvent放入eventProcessLoop事件处理循环中
     sched.dagScheduler.taskEnded(tasks(index), Success, result.value(), result.accumUpdates,
       result.metricPeaks, info)
     maybeFinishTaskSet()
@@ -986,6 +1002,7 @@ private[spark] class TaskSetManager(
         // We may have a running task whose partition has been marked as successful,
         // this partition has another task completed in another stage attempt.
         // We treat it as a running task and will call handleFailedTask later.
+        // 检查在此之前是否有其他尝试成功，并且此尝试尚未处理
         if (successful(index) && !info.running && !killedByOtherAttempt.contains(tid)) {
           successful(index) = false
           copiesRunning(index) -= 1

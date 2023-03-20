@@ -58,6 +58,11 @@ private[spark] class MapPartitionsRDD[U: ClassTag, T: ClassTag](
     prev = null
   }
 
+
+  // Spark必须同时启动屏障阶段的所有任务。如果RDD处于屏障阶段，至少有一个父RDD或其自身映射自一个RDDBarrier。
+  // 对于ShuffledRDD，此函数总是返回false，因为ShuffledRDD表示新阶段的开始；
+  // 对于MapPartitionsRDD，可以从RDDBarrier转换，在这种情况下，MapPartitionsRDD应标记为屏障。
+  // 重写GetOutputDeterministicLevel方法实现自定义逻辑计算RDD输出的确定级别。
   @transient protected lazy override val isBarrier_ : Boolean =
     isFromBarrier || dependencies.exists(_.rdd.isBarrier())
 
