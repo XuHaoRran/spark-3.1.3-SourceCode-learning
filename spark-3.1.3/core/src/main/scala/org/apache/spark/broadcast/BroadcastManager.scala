@@ -36,10 +36,11 @@ private[spark] class BroadcastManager(
 
   private var initialized = false
   private var broadcastFactory: BroadcastFactory = null
-
+  // 调用initialize方法，initialize方法就创建TorrentBroadcastFactory的方式
   initialize()
 
   // Called by SparkContext or Executor before using Broadcast
+  // 使用广播前，被SparkContext或Executor调用
   private def initialize(): Unit = {
     synchronized {
       if (!initialized) {

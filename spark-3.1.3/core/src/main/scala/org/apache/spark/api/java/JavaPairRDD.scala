@@ -873,6 +873,7 @@ class JavaPairRDD[K, V](val rdd: RDD[(K, V)])
    */
   def repartitionAndSortWithinPartitions(partitioner: Partitioner, comp: Comparator[K])
     : JavaPairRDD[K, V] = {
+    // 允许比较器做隐式转换进行排序
     implicit val ordering = comp // Allow implicit conversion of Comparator to Ordering.
     fromRDD(
       new OrderedRDDFunctions[K, V, (K, V)](rdd).repartitionAndSortWithinPartitions(partitioner))

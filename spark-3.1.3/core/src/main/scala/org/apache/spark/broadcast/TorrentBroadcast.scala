@@ -52,6 +52,23 @@ import org.apache.spark.util.io.{ChunkedByteBuffer, ChunkedByteBufferOutputStrea
  *
  * When initialized, TorrentBroadcast objects read SparkEnv.get.conf.
  *
+ * Spark 2.0版本中的TorrentBroadcast方式：数据开始在Driver中，A节点如果使用了数据，A就成为供应源，
+ * 这时Driver节点、A节点两个节点成为供应源，如第三个节点B访问的时候，第三个节点B也成了供应源，同样地，
+ * 第四个节点、第五个节点……都成了供应源，这些都被BlockManager管理，这样不会导致一个节点压力太大，从理论上讲，
+ * 数据使用的节点越多，网络速度就越快。
+ *
+ * TorrentBroadcast按照BLOCK_SIZE（默认是4MB）将Broadcast中的数据划分成为不同的Block，然后将分块信息
+ * （也就是Meta信息）存放到Driver的BlockManager中，同时会告诉BlockManagerMaster，说明Meta信息存放
+ * 完毕
+ * 。
+ *orrentBroadcast将元数据信息存放到BlockManager，然后汇报给BlockManagerMaster。数据存放到BlockManagerMaster中就变成了全局数据，
+ * BlockManagerMaster具有所有的信息，Driver、Executor就可以访问这些内容。Executor运行具体的TASK的时候，
+ * 通过TorrentBroadcast的方式readBlocks，如果本地有数据，就从本地读取，如果本地没有数据，就从远程读取数据。
+ * Executor读取信息以后，通过TorrentBroadcast的机制通知BlockManagerMaster数据多了一份副本，下一个Task读取数据的时候，
+ * 就有两个选择，分享的节点越多，
+ * 下载的供应源就越多，最终变成点到点的方式
+ *
+ *
  * @param obj object to broadcast
  * @param id A unique identifier for the broadcast variable.
  */
@@ -167,13 +184,14 @@ private[spark] class TorrentBroadcast[T: ClassTag](obj: T, id: Long)
     // to the driver, so other executors can pull these chunks from this executor as well.
     val blocks = new Array[BlockData](numBlocks)
     val bm = SparkEnv.get.blockManager
-
+    // Random.shuffle(Seq.range(0, numBlocks)进行随机洗牌，是因为数据有很多来源DataServer，为了保持负载均衡，因此使用shuffle
     for (pid <- Random.shuffle(Seq.range(0, numBlocks))) {
       val pieceId = BroadcastBlockId(id, "piece" + pid)
       logDebug(s"Reading piece $pieceId of $broadcastId")
       // First try getLocalBytes because there is a chance that previous attempts to fetch the
       // broadcast blocks have already fetched some of the blocks. In that case, some blocks
       // would be available locally (on this executor).
+      // 如果本地有数据，就从本地读取，如果本地没有数据，就从远程读取数据。
       bm.getLocalBytes(pieceId) match {
         case Some(block) =>
           blocks(pid) = block

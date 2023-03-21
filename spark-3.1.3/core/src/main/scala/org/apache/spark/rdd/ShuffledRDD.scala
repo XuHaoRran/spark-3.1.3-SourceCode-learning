@@ -30,6 +30,9 @@ private[spark] class ShuffledRDDPartition(val idx: Int) extends Partition {
 /**
  * :: DeveloperApi ::
  * The resulting RDD from a shuffle (e.g. repartitioning of data).
+ *
+ * ShuffledRDD的实例生成：先看ShuffledRDD实例的生成部分。这里传入的prev是生成ShuffleRDD的上层的RDD，
+ * 在实例生成时设置对上层的RDD的依赖为Nil，表示对上层RDD的依赖是Nil
  * @param prev the parent RDD.
  * @param part the partitioner used to partition the RDD
  * @tparam K the key class.
@@ -84,6 +87,7 @@ class ShuffledRDD[K: ClassTag, V: ClassTag, C: ClassTag](
         serializerManager.getSerializer(implicitly[ClassTag[K]], implicitly[ClassTag[V]])
       }
     }
+    // 这里，生成对ShuffleRDD的依赖为ShuffleDependency实例，这个依赖的RDD就是生成这个ShuffleRDD的上层的RDD的实例
     List(new ShuffleDependency(prev, part, serializer, keyOrdering, aggregator, mapSideCombine))
   }
 

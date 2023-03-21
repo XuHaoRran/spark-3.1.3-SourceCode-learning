@@ -80,6 +80,7 @@ object Partitioner {
 
     // If the existing max partitioner is an eligible one, or its partitions number is larger
     // than or equal to the default number of partitions, use the existing partitioner.
+    // 如果现有的max分区是可用分区，或者其分区数比默认分区数更大，使用现有的分区数
     if (hasMaxPartitioner.nonEmpty && (isEligiblePartitioner(hasMaxPartitioner.get, rdds) ||
         defaultNumPartitions <= hasMaxPartitioner.get.getNumPartitions)) {
       hasMaxPartitioner.get.partitioner.get
@@ -108,6 +109,14 @@ object Partitioner {
  * Java arrays have hashCodes that are based on the arrays' identities rather than their contents,
  * so attempting to partition an RDD[Array[_]] or RDD[(Array[_], _)] using a HashPartitioner will
  * produce an unexpected or incorrect result.
+ *
+ * HashPartitioner是一个基于Java的Object.HashCode实现，基于Hash的Partitioner。
+ * 由于Java arrays的Hash code是基于arrays的标识，而不是它的内容，所以如果使用HashPartitioner
+ * 对RDD[Array[_]]或者RDD[(Array[_],_)]进行Partition，可能会得到不正确的结果。
+ * 也就是说，如果RDD中保存的数据类型是arrays，这时默认的HashPartitioner是不可用的，
+ * 用户在调用reduceByKey时需要自行实现一个Partitioner，否则方法会抛出异常
+ *
+ *
  */
 class HashPartitioner(partitions: Int) extends Partitioner {
   require(partitions >= 0, s"Number of partitions ($partitions) cannot be negative.")

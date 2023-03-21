@@ -315,7 +315,7 @@ object SparkEnv extends Logging {
         RpcUtils.makeDriverRef(name, conf, rpcEnv)
       }
     }
-
+    // BroadcastManager是用来管理Broadcast的，该实例对象是在SparkContext创建SparkEnv的时候创建的。
     val broadcastManager = new BroadcastManager(isDriver, conf, securityManager)
     // 跟踪所有的Mapper的输出
     val mapOutputTracker = if (isDriver) {

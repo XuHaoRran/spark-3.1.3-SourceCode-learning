@@ -79,6 +79,15 @@ class OrderedRDDFunctions[K : Ordering : ClassTag,
    * Repartition the RDD according to the given partitioner and, within each resulting partition,
    * sort records by their keys.
    *
+   * 该方法依据Partitioner对RDD进行分区，并且在每个结果分区中按key进行排序；
+   * 通过对比sortByKey发现，这种方式比先分区，然后在每个分区中进行排序效率高，
+   * 这是因为它可以将排序融入Shuffle阶段。
+   *
+   * repartitionAndSortWithinPartitions是Spark官网推荐的一个算子。官方建议，如果repartition重分区之后，
+   * 还要进行排序，建议直接使用repartitionAndSortWithinPartitions算子。因为该算子可以一边进行重分区的Shuffle操作，
+   * 一边进行排序。Shuffle与sort两个操作同时进行，
+   * 比先Shuffle再sort性能要高。
+   *
    * This is more efficient than calling `repartition` and then sorting within each partition
    * because it can push the sorting down into the shuffle machinery.
    */

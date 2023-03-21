@@ -75,9 +75,11 @@ class PairRDDFunctions[K, V](self: RDD[(K, V)])
       serializer: Serializer = null)(implicit ct: ClassTag[C]): RDD[(K, C)] = self.withScope {
     require(mergeCombiners != null, "mergeCombiners must be defined") // required as of Spark 0.9.0
     if (keyClass.isArray) {
+      //　如果执行这个操作，RDD的key是一个数组类型时，同时设置Mapper端执行combine操作，提示错误。
       if (mapSideCombine) {
         throw new SparkException("Cannot use map-side combining with array keys.")
       }
+      // 如果RDD的key是一个数组类型，同时分区算子是默认的哈希算子时，提示错误
       if (partitioner.isInstanceOf[HashPartitioner]) {
         throw new SparkException("HashPartitioner cannot partition array keys.")
       }
@@ -299,6 +301,9 @@ class PairRDDFunctions[K, V](self: RDD[(K, V)])
    * Merge the values for each key using an associative and commutative reduce function. This will
    * also perform the merging locally on each mapper before sending results to a reducer, similarly
    * to a "combiner" in MapReduce.
+   *
+   * 使用关联和交换汇聚函数合并每个 Key 键的 Value 值。在每个 Mapper
+   * 端将结果发送至Reducer端之前，进行本地合并，类似于MapReduce的本地聚合 combiner
    */
   def reduceByKey(partitioner: Partitioner, func: (V, V) => V): RDD[(K, V)] = self.withScope {
     combineByKeyWithClassTag[V]((v: V) => v, func, func, partitioner)
@@ -308,6 +313,14 @@ class PairRDDFunctions[K, V](self: RDD[(K, V)])
    * Merge the values for each key using an associative and commutative reduce function. This will
    * also perform the merging locally on each mapper before sending results to a reducer, similarly
    * to a "combiner" in MapReduce. Output will be hash-partitioned with numPartitions partitions.
+   *
+   * Spark的RDD的reduceByKey是使用一个相关的函数来合并每个key的value值的一个算子。
+   * 本质上讲，reduceByKey函数（算子）只作用于包含key-value的RDD上，它是transformation类型的算子，
+   * 这也就意味着它是懒加载的（也就是说，不调用Action的方法，是不会去计算的）。使用时，
+   * 我们需要传递一个相关的函数作为参数，这个函数将会被应用到源RDD上，并且创建一个新的RDD作为返回结果，
+   * 这个算子作为data Shuffling在分区时被广泛使用
+   * 。
+   *
    */
   def reduceByKey(func: (V, V) => V, numPartitions: Int): RDD[(K, V)] = self.withScope {
     reduceByKey(new HashPartitioner(numPartitions), func)
@@ -318,6 +331,9 @@ class PairRDDFunctions[K, V](self: RDD[(K, V)])
    * also perform the merging locally on each mapper before sending results to a reducer, similarly
    * to a "combiner" in MapReduce. Output will be hash-partitioned with the existing partitioner/
    * parallelism level.
+   *
+   * 其中，当用户没有指定Partitioner以及Partition的个数时，Spark会调用defaultPartitioner(RDD)函数去获取一个默认的Partitioner。
+   *
    */
   def reduceByKey(func: (V, V) => V): RDD[(K, V)] = self.withScope {
     reduceByKey(defaultPartitioner(self), func)

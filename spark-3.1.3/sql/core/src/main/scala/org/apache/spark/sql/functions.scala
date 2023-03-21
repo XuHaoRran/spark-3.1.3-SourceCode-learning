@@ -58,16 +58,16 @@ import org.apache.spark.util.Utils
  * only `Column` but also other types such as a native string. The other variants currently exist
  * for historical reasons.
  *
- * @groupname udf_funcs UDF functions
- * @groupname agg_funcs Aggregate functions
- * @groupname datetime_funcs Date time functions
- * @groupname sort_funcs Sorting functions
- * @groupname normal_funcs Non-aggregate functions
- * @groupname math_funcs Math functions
- * @groupname misc_funcs Misc functions
- * @groupname window_funcs Window functions
- * @groupname string_funcs String functions
- * @groupname collection_funcs Collection functions
+ * @groupname udf_funcs UDF functions UDF自定义函数
+ * @groupname agg_funcs Aggregate functions  聚合函数
+ * @groupname datetime_funcs Date time functions   日期时间函数
+ * @groupname sort_funcs Sorting functions   排序功能
+ * @groupname normal_funcs Non-aggregate functions   非聚合函数
+ * @groupname math_funcs Math functions   数学函数
+ * @groupname misc_funcs Misc functions   其他功能
+ * @groupname window_funcs Window functions   窗口功能
+ * @groupname string_funcs String functions   字符串函数
+ * @groupname collection_funcs Collection functions 集合函数功能
  * @groupname partition_transforms Partition transform functions
  * @groupname Ungrouped Support functions for DataFrames
  * @since 1.3.0
@@ -136,6 +136,7 @@ object functions {
   //////////////////////////////////////////////////////////////////////////////////////////////
 
   /**
+   * 根据列的升序返回排序表达式
    * Returns a sort expression based on ascending order of the column.
    * {{{
    *   df.sort(asc("dept"), desc("age"))
@@ -147,6 +148,7 @@ object functions {
   def asc(columnName: String): Column = Column(columnName).asc
 
   /**
+   * 返回基于列的升序的排序表达式，空值在非空值之前返回
    * Returns a sort expression based on ascending order of the column,
    * and null values return before non-null values.
    * {{{
@@ -159,6 +161,7 @@ object functions {
   def asc_nulls_first(columnName: String): Column = Column(columnName).asc_nulls_first
 
   /**
+   * 根据列的升序返回排序表达式，空值显示在非空值后面
    * Returns a sort expression based on ascending order of the column,
    * and null values appear after non-null values.
    * {{{
@@ -241,6 +244,7 @@ object functions {
   }
 
   /**
+   * 聚合函数：返回组中不同记录的近似数量
    * Aggregate function: returns the approximate number of distinct items in a group.
    *
    * @group agg_funcs
@@ -251,6 +255,7 @@ object functions {
   }
 
   /**
+   * 聚合函数：返回组中不同记录的近似数量
    * Aggregate function: returns the approximate number of distinct items in a group.
    *
    * @group agg_funcs
@@ -260,7 +265,7 @@ object functions {
 
   /**
    * Aggregate function: returns the approximate number of distinct items in a group.
-   *
+   * 聚合函数：返回组中不同记录的近似数量
    * @param rsd maximum relative standard deviation allowed (default = 0.05)
    *
    * @group agg_funcs
@@ -1078,6 +1083,7 @@ object functions {
   //////////////////////////////////////////////////////////////////////////////////////////////
 
   /**
+   * 创建一个新的数组列，输入列必须具有相同的数据类型
    * Creates a new array column. The input columns must all have the same data type.
    *
    * @group normal_funcs
@@ -1087,6 +1093,7 @@ object functions {
   def array(cols: Column*): Column = withExpr { CreateArray(cols.map(_.expr)) }
 
   /**
+   * 创建一个新的数组列，输入列必须具有相同的数据类型
    * Creates a new array column. The input columns must all have the same data type.
    *
    * @group normal_funcs
@@ -1404,13 +1411,14 @@ object functions {
 
   /**
    * Computes the absolute value of a numeric value.
-   *
+   * 计算绝对值
    * @group math_funcs
    * @since 1.3.0
    */
   def abs(e: Column): Column = withExpr { Abs(e.expr) }
 
   /**
+   * 计算给定值的反余弦值，返回的角度为0.0~Π
    * @return inverse cosine of `e` in radians, as if computed by `java.lang.Math.acos`
    *
    * @group math_funcs
@@ -1419,6 +1427,8 @@ object functions {
   def acos(e: Column): Column = withExpr { Acos(e.expr) }
 
   /**
+   * 计算给定值的反余弦值，返回的角度为0.0~Π
+   *
    * @return inverse cosine of `columnName`, as if computed by `java.lang.Math.acos`
    *
    * @group math_funcs
@@ -1443,6 +1453,7 @@ object functions {
   def acosh(columnName: String): Column = acosh(Column(columnName))
 
   /**
+   * 计算给定值的正弦倒数，返回角度为-Π/2~Π/2
    * @return inverse sine of `e` in radians, as if computed by `java.lang.Math.asin`
    *
    * @group math_funcs
@@ -2400,6 +2411,7 @@ object functions {
   //////////////////////////////////////////////////////////////////////////////////////////////
 
   /**
+   * 计算字符串列的第一个字符的数值，并将结果作为int列返回
    * Computes the numeric value of the first character of the string column, and returns the
    * result as an int column.
    *
@@ -3377,10 +3389,11 @@ object functions {
    * @since 2.0.0
    */
   def window(
-      timeColumn: Column,
-      windowDuration: String,
-      slideDuration: String,
-      startTime: String): Column = {
+      timeColumn: Column, // timeColumn列或表达式作为窗口时间的时间戳，时间列必须为Timestamp类型
+      windowDuration: String, // 指定窗口宽度的字符串，如10分钟，1秒钟
+      slideDuration: String,  // 指定滑动窗口的字符串，如1分钟，slideDuration必须小于或等于windowduration
+      startTime: String   // 相对于UTC开始偏移窗口的时间降额
+            ): Column = {
     withExpr {
       TimeWindow(timeColumn.expr, windowDuration, slideDuration, startTime)
     }.as("window")
@@ -3483,6 +3496,7 @@ object functions {
   //////////////////////////////////////////////////////////////////////////////////////////////
 
   /**
+   * 如果数组包含value，则返回true
    * Returns null if the array is null, true if the array contains `value`, and false otherwise.
    * @group collection_funcs
    * @since 1.5.0
@@ -4324,6 +4338,7 @@ object functions {
   def array_repeat(e: Column, count: Int): Column = array_repeat(e, lit(count))
 
   /**
+   * 返回包含映射键的无续数组
    * Returns an unordered array containing the keys of the map.
    * @group collection_funcs
    * @since 2.3.0

@@ -40,6 +40,14 @@
   </properties>
 
   <dependencies>
+
+    <!--        <dependency>-->
+    <!--            <groupId>com.google.guava</groupId>-->
+    <!--            <artifactId>guava</artifactId>-->
+    <!--            <version>24.0-jre</version>-->
+    <!--        </dependency>-->
+
+
     <!-- Prevent our dummy JAR from being included in Spark distributions or uploaded to YARN -->
     <dependency>
       <groupId>org.spark-project.spark</groupId>
@@ -59,18 +67,53 @@
       <version>${project.version}</version>
 <!--      <scope>compile</scope>-->
     </dependency>
+    <!-- https://mvnrepository.com/artifact/org.apache.hadoop/hadoop-common -->
+    <dependency>
+      <groupId>org.apache.hadoop</groupId>
+      <artifactId>hadoop-common</artifactId>
+      <version>${hadoop.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>org.apache.hadoop</groupId>
+      <artifactId>hadoop-client</artifactId>
+      <version>${hadoop.version}</version>
+    </dependency>
+
+    <dependency>
+      <groupId>org.apache.hadoop</groupId>
+      <artifactId>hadoop-mapreduce-client-core</artifactId>
+      <version>${hadoop.version}</version>
+    </dependency>
+
+    <!-- https://mvnrepository.com/artifact/org.apache.hadoop/hadoop-hdfs -->
+    <dependency>
+      <groupId>org.apache.hadoop</groupId>
+      <artifactId>hadoop-hdfs</artifactId>
+      <version>${hadoop.version}</version>
+    </dependency>
+
+
+
     <dependency>
       <groupId>org.apache.spark</groupId>
       <artifactId>spark-mllib_${scala.binary.version}</artifactId>
       <version>${project.version}</version>
       <scope>compile</scope>
     </dependency>
+<!--    <dependency>-->
+<!--      <groupId>org.apache.spark</groupId>-->
+<!--      <artifactId>spark-hive_${scala.binary.version}</artifactId>-->
+<!--      <version>${project.version}</version>-->
+<!--      <scope>compile</scope>-->
+<!--    </dependency>-->
     <dependency>
       <groupId>org.apache.spark</groupId>
-      <artifactId>spark-hive_${scala.binary.version}</artifactId>
+      <artifactId>spark-hive_2.12</artifactId>
       <version>${project.version}</version>
-      <scope>compile</scope>
+
     </dependency>
+
     <dependency>
       <groupId>org.apache.spark</groupId>
       <artifactId>spark-graphx_${scala.binary.version}</artifactId>

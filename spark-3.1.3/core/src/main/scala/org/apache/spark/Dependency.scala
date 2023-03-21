@@ -96,7 +96,10 @@ class ShuffleDependency[K: ClassTag, V: ClassTag, C: ClassTag](
     Option(reflect.classTag[C]).map(_.runtimeClass.getName)
 
   val shuffleId: Int = _rdd.context.newShuffleId()
-
+  // 向ShuffleManager注册这个Shuffle的依赖。Task的结果集向Driver通知时，
+  // 首先需要这个Shuffle是一个注册的Shuffle。reduceByKey适合使用在大数据集上。
+  // 因为Spark知道它可以在每个分区移动数据前将输出数据与一个共用的key结合
+  // 。
   val shuffleHandle: ShuffleHandle = _rdd.context.env.shuffleManager.registerShuffle(
     shuffleId, this)
 

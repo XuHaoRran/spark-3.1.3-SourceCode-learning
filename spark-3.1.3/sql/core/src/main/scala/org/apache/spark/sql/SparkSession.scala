@@ -909,6 +909,14 @@ object SparkSession extends Logging {
      * In case an existing SparkSession is returned, the non-static config options specified in
      * this builder will be applied to the existing SparkSession.
      *
+     * 获取已有的[SparkSession]，如果不存在，
+     * 根据 Builder 的配置参数创建一个新的*SparkSession。
+     * 该方法首先检查是否有一个有效的本地线程 SparkSession，
+     * 如果已有*SparkSession，则返回SparkSession，然后检查是否有有效的全局默认
+     * SparkSession;*如果有，则返回SparkSession。如果没有有效的全局默认SparkSession，
+     * 该方法创建一个*新的 SparkSession 和分配新创建的 SparkSession 为全局默认值。如果返回一个已有的*SparkSession，
+     * Builder的配置参数将应用到已有的SparkSession。@since 2.0.0元
+     *
      * @since 2.0.0
      */
     def getOrCreate(): SparkSession = synchronized {
@@ -920,6 +928,7 @@ object SparkSession extends Logging {
       }
 
       // Get the session from current thread's active session.
+      // 从当前线程的活动会话中获取会话
       var session = activeThreadSession.get()
       if ((session ne null) && !session.sparkContext.isStopped) {
         applyModifiableSettings(session)
@@ -927,8 +936,10 @@ object SparkSession extends Logging {
       }
 
       // Global synchronization so we will only set the default session once.
+      // 全局同步变量，只设置一个默认会话
       SparkSession.synchronized {
         // If the current thread does not have an active session, get it from the global session.
+        // 如果本地现场没有会话，则从全局会话中获取会话
         session = defaultSession.get()
         if ((session ne null) && !session.sparkContext.isStopped) {
           applyModifiableSettings(session)
@@ -936,8 +947,10 @@ object SparkSession extends Logging {
         }
 
         // No active nor global default session. Create a new one.
+        // 如果没有全局默认会话，就创建一个新的会话
         val sparkContext = userSuppliedContext.getOrElse {
           // set a random app name if not given.
+          // 如果没有应用名，则设置一个应用名
           if (!sparkConf.contains("spark.app.name")) {
             sparkConf.setAppName(java.util.UUID.randomUUID().toString)
           }
@@ -1093,6 +1106,7 @@ object SparkSession extends Logging {
   /** Register the AppEnd listener onto the Context  */
   private def registerContextListener(sparkContext: SparkContext): Unit = {
     if (!listenerRegistered.get()) {
+      // 向singleton注册一个成功实例化的上下文，在类的末尾定义，以便只有在实例的构造中没有异常时才更新singleton
       sparkContext.addSparkListener(new SparkListener {
         override def onApplicationEnd(applicationEnd: SparkListenerApplicationEnd): Unit = {
           defaultSession.set(null)

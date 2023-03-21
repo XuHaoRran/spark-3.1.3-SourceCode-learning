@@ -504,6 +504,9 @@ abstract class RDD[T: ClassTag](
    *
    * If you are decreasing the number of partitions in this RDD, consider using `coalesce`,
    * which can avoid performing a shuffle.
+   *
+   * repartition方法就是coalesce方法Shuffle为True的情况。如果只是要减少父RDD的分区数量，并且要设置的分区数量变化并不是很激烈，
+   * 则可以考虑直接使用coalesce方法来避免执行Shuffle操作，以提高效率
    */
   def repartition(numPartitions: Int)(implicit ord: Ordering[T] = null): RDD[T] = withScope {
     coalesce(numPartitions, shuffle = true)
@@ -511,6 +514,9 @@ abstract class RDD[T: ClassTag](
 
   /**
    * Return a new RDD that is reduced into `numPartitions` partitions.
+   *
+   * 返回一个新的数据集，这个新的数据集有numpartitions个分区。在RDD中也有相似的coalesce 定义。coalesce算子操作的结果应用于窄依赖中，
+   * 将 1000 个分区转换成100个分区，这个过程不会发生 shuffle，相反，如果 10个分区转换成100个分区，将会发生shutf
    *
    * This results in a narrow dependency, e.g. if you go from 1000 partitions
    * to 100 partitions, there will not be a shuffle, instead each of the 100
@@ -522,7 +528,12 @@ abstract class RDD[T: ClassTag](
    * you like (e.g. one node in the case of numPartitions = 1). To avoid this,
    * you can pass shuffle = true. This will add a shuffle step, but means the
    * current upstream partitions will be executed in parallel (per whatever
-   * the current partitioning is).
+   * the current partitioning is). coalesce方法的作用是返回指定一个新的指定分区的RDD。
+   * 默认情况下，shuffle设置为False。如果是生成一个窄依赖的结果，那么不会发生Shuffle
+   * 。例如，1000个分区被重新设置成10个分区，这样不会发生Shuffle。
+   * 如果分区的数量发生激烈的变化，如设置numPartitions =1，
+   * 这可能会造成运行计算的节点比你想象的要少，为了避免这个情况，可以设置Shuffle=True，那么，
+   * 这会增加Shuffle操作。
    *
    * @note With shuffle = true, you can actually coalesce to a larger number
    * of partitions. This is useful if you have a small number of partitions,
@@ -532,6 +543,13 @@ abstract class RDD[T: ClassTag](
    * passed in must be serializable.
    *
    * <p>Spark进行数据分片时，默认将数据放在内存中，如果内存放不下，一部分会放在磁盘上进行保存。
+   *
+   * 通常对一个RDD执行filter算子过滤掉RDD中较多数据后（如30%以上的数据），建议使用coalesce算子，手动减少RDD的Partition数量，
+   * 将RDD中的数据压缩到更少的Partition中去。因为filter之后，RDD的每个Partition中都会有很多数据被过滤掉，
+   * 此时如果照常进行后续的计算，其实每个Task处理的Partition中的数据量并不是很多，有点资源浪费，
+   * 而且此时处理的Task越多，速度反而越慢。因此，用coalesce减少Partition数量，
+   * 将RDD中的数据压缩到更少的Partition之后，只要使用更少的Task即可处理完所有的Partition。
+   * 在某些场景下，对性能的提升会有一定帮助。
    */
   def coalesce(numPartitions: Int, shuffle: Boolean = false,
                partitionCoalescer: Option[PartitionCoalescer] = Option.empty)
@@ -884,10 +902,17 @@ abstract class RDD[T: ClassTag](
   }
 
   /**
+   *
    * Return a new RDD by applying a function to each partition of this RDD.
    *
    * `preservesPartitioning` indicates whether the input function preserves the partitioner, which
    * should be `false` unless this is a pair RDD and the input function doesn't modify the keys.
+   *
+   * mapPartitions和map函数类似，只不过映射函数的参数由RDD中的每个元素变成了RDD中每个分区的迭代器。
+   * 如果在映射的过程中需要频繁创建额外的对象，使用mapPartitions要比使用map高效。
+   *
+   * 例如，将RDD中的所有数据通过JDBC连接写入数据库，如果使用map函数，可能要为每个元素都创建一个Connection，
+   * 这样开销很大；如果使用mapPartitions，那么只需要针对每个分区建立一个Connection。
    */
   def mapPartitions[U: ClassTag](
       f: Iterator[T] => Iterator[U],
@@ -1038,7 +1063,7 @@ abstract class RDD[T: ClassTag](
 
 
   // Actions (launch a job to return a value to the user program)
-
+  // 在函数中提交runJob，对于iter中的每个元素，使用iter.foreach遍历进行计算
   /**
    * Applies a function f to all elements of this RDD.
    */
@@ -1049,6 +1074,8 @@ abstract class RDD[T: ClassTag](
 
   /**
    * Applies a function f to each partition of this RDD.
+   * foreachPartition函数根据传入的function进行处理，和foreach函数的不同之处在于：foreachPartition中function的传入参数是一个
+   * Partition对应数据的Iterator，而不是直接使用iterator的foreach，然后对分区的数据进行计算
    */
   def foreachPartition(f: Iterator[T] => Unit): Unit = withScope {
     val cleanF = sc.clean(f)
@@ -1162,6 +1189,13 @@ abstract class RDD[T: ClassTag](
   /**
    * Reduces the elements of this RDD in a multi-level tree pattern.
    *
+   * treeReduce类似于treeAggregate，利用在Executor端进行多次Aggregate来缩小Driver的计算开销。
+   *
+   * treeReduce函数先针对每个分区利用scala的reduceLeft函数进行计算；最后，再将局部合并的RDD进行treeAggregate计算，
+   * 这里的seqOp和combOp一样，初值均为空。在实际应用中，可以用treeReduce代替reduce，
+   * 主要用于单个reduce操作开销比较大的情况，
+   * 而treeReduce可以通过调整深度来控制每次reduce的规模
+   *
    * @param depth suggested depth of the tree (default: 2)
    * @see [[org.apache.spark.rdd.RDD#reduce]]
    */
@@ -1250,7 +1284,11 @@ abstract class RDD[T: ClassTag](
   /**
    * Aggregates the elements of this RDD in a multi-level tree pattern.
    * This method is semantically identical to [[org.apache.spark.rdd.RDD#aggregate]].
-   *
+   * treeAggregate分层进行Aggregate，由于Aggregate的时候，其分区的计算结果是传输到Driver端再进行合并的，
+   * 如果分区比较多，计算结果返回的数据量比较大，那么Driver端需要缓存大量的中间结果，
+   * 这样就会加大Driver端的计算压力，因此treeAggregate把分区计算结果的合并仍旧放在Executor端进行，
+   * 将结果在Executor端不断合并缩小返回Driver的数据量，
+   * 最后在Driver端进行合并。
    * @param depth suggested depth of the tree (default: 2)
    */
   def treeAggregate[U: ClassTag](zeroValue: U)(
@@ -1263,23 +1301,31 @@ abstract class RDD[T: ClassTag](
     } else {
       val cleanSeqOp = context.clean(seqOp)
       val cleanCombOp = context.clean(combOp)
+      // 针对初始分区的聚合函数
       val aggregatePartition =
         (it: Iterator[T]) => it.aggregate(zeroValue)(cleanSeqOp, cleanCombOp)
+      // 针对初始的各个分区先进行部分聚合
       var partiallyAggregated: RDD[U] = mapPartitions(it => Iterator(aggregatePartition(it)))
       var numPartitions = partiallyAggregated.partitions.length
+      // 根据传入的depth计算出需要迭代计算的程度
       val scale = math.max(math.ceil(math.pow(numPartitions, 1.0 / depth)).toInt, 2)
+      // 如果创建一个额外的级别并不能帮助减少wall-clock时间，我们将停止树的拒接
+      // 当不保存wall-clock时间时，将不触发树聚集TreeAggregation
       // If creating an extra level doesn't help reduce
       // the wall-clock time, we stop tree aggregation.
 
       // Don't trigger TreeAggregation when it doesn't save wall-clock time
       while (numPartitions > scale + math.ceil(numPartitions.toDouble / scale)) {
+        // 计算迭代的程度
         numPartitions /= scale
         val curNumPartitions = numPartitions
+        // 减少分区的个数，合并部分分区的结果
         partiallyAggregated = partiallyAggregated.mapPartitionsWithIndex {
           (i, iter) => iter.map((i % curNumPartitions, _))
         }.foldByKey(zeroValue, new HashPartitioner(curNumPartitions))(cleanCombOp).values
       }
       val copiedZeroValue = Utils.clone(zeroValue, sc.env.closureSerializer.newInstance())
+      // 执行最后一次fold，返回最终结果
       partiallyAggregated.fold(copiedZeroValue)(cleanCombOp)
     }
   }
