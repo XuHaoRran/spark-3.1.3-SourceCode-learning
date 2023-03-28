@@ -36,6 +36,7 @@ import org.apache.spark.unsafe.memory.MemoryBlock;
 import org.apache.spark.util.Utils;
 
 /**
+ *
  * Manages the memory allocated by an individual task.
  * <p>
  * Most of the complexity in this class deals with encoding of off-heap addresses into 64-bit longs.
@@ -55,6 +56,21 @@ import org.apache.spark.util.Utils;
  * This allows us to address 8192 pages. In on-heap mode, the maximum page size is limited by the
  * maximum size of a long[] array, allowing us to address 8192 * (2^31 - 1) * 8 bytes, which is
  * approximately 140 terabytes of memory.
+ *
+ * <p>分配内存块，将在MemoryManager的页表记录;用于分配Tungsten内存模式下的内存块，
+ * 这些内存将在操作算子之间共享。如果没有足够的内存来分配页面，则返回 null。可能返回一页，
+ * 其包念的字节比请求的字节少因此调用者应该验证返回页面的大小</p>
+ *
+ * 管理为单个Task分配的内存
+ * 内存地址在不同的模式下的表示：
+ * 1. off-heap模式：直接使用64位的long来表示内存地址
+ * 2. on-heap模式：使用base Object和64位的偏移量来表示内存地址
+ * 通过封装类MemoryBlock统一表示内存块信息
+ * 1.Off-heap:memoryblock的baseObject为null,offset为内存地址
+ * 2.on-heap:memoryblock的baseObject为内存块的baseObject保存的引用，该引用可以由page的索引从pageTable获取
+ * offset为内存块的偏移量
+ *
+ * 通过这两种内存模式对应的编码方式，最终对外提供的编码格式为13b-pageNumber+51b-offset
  */
 public class TaskMemoryManager {
 

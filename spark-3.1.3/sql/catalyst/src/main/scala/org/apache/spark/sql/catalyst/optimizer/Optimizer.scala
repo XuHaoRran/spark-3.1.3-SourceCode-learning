@@ -36,7 +36,17 @@ import org.apache.spark.util.Utils
 /**
  * Abstract class all optimizers should inherit of, contains the standard batches (extending
  * Optimizers can override this.
+ *
+ * 抽象类继承的所有优化器，包括标准的批处理器（扩展优化器可以重写）
+ *
  */
+// optimizer的主要职责是将Analyzer给Resolved的Logical Plan根据不同的优化策略Batch，来对语法树进行优化。
+// 优化逻辑计划节点（Local Plan）以及表达式（Expression），也是转成物理执行计划的前置。
+
+// Optimizer优化就是在Catalyst里将语法分析后的逻辑计划（Analyzed Logical Plan）
+// 通过对逻辑计划（Logical Plan）和表达式（Expression）
+// 进行规则（Rule）的应用及转换（Transform），从而实现树节点的合并和优化。
+// 其中主要的优化策略是合并、列裁剪、过滤器下推等。
 abstract class Optimizer(catalogManager: CatalogManager)
   extends RuleExecutor[LogicalPlan] {
 
@@ -46,6 +56,7 @@ abstract class Optimizer(catalogManager: CatalogManager)
   // - only host special expressions in supported operators
   // - has globally-unique attribute IDs
   // - optimized plan have same schema with previous plan.
+  // 在测试模式下检查计划的结构完整性
   override protected def isPlanIntegral(
       previousPlan: LogicalPlan,
       currentPlan: LogicalPlan): Boolean = {
@@ -71,11 +82,16 @@ abstract class Optimizer(catalogManager: CatalogManager)
    * Implementations of this class should override this method, and [[nonExcludableRules]] if
    * necessary, instead of [[batches]]. The rule batches that eventually run in the Optimizer,
    * i.e., returned by [[batches]], will be (defaultBatches - (excludedRules - nonExcludableRules)).
+   *
+   * 在优化器中定义默认规则批处理。此类的实现应重写此方法，
+   * 并在必要时使用nonExcludableRules，而不是使用 batches*最终在优化器中运行的规则批处理,
+   * 由batches返回的规则批将是defaultBatches(excludedRules - nonExcludableRules))
    */
   def defaultBatches: Seq[Batch] = {
     val operatorOptimizationRuleSet =
       Seq(
         // Operator push down
+        // 运算符下推
         PushProjectionThroughUnion,
         ReorderJoin,
         EliminateOuterJoin,
@@ -85,6 +101,7 @@ abstract class Optimizer(catalogManager: CatalogManager)
         LimitPushDown,
         ColumnPruning,
         // Operator combine
+        // 运算符组合
         CollapseRepartition,
         CollapseProject,
         OptimizeWindowFunctions,
@@ -141,6 +158,11 @@ abstract class Optimizer(catalogManager: CatalogManager)
     // in the analyzer, because they are needed for correctness (e.g. ComputeCurrentTime).
     // However, because we also use the analyzer to canonicalized queries (for view definition),
     // we do not eliminate subqueries or compute current time in the analyzer.
+    /*
+    严格说来， Finish Analysis 中的一些规则不是优化器规则，更多地属于分析，这是因为它们需要的正确性
+    (如ComputeCurrentTime)。然而，因为我们也使用analyzer的规范化查询(如视图定义)，故无须消除子查询或计算分析当前时间
+    */
+
     Batch("Finish Analysis", Once,
       EliminateResolvedHint,
       EliminateSubqueryAliases,
@@ -152,12 +174,15 @@ abstract class Optimizer(catalogManager: CatalogManager)
       ReplaceDeduplicateWithAggregate) ::
     //////////////////////////////////////////////////////////////////////////////////////////
     // Optimizer rules start here
+    // 优化器规则从这里开始：
     //////////////////////////////////////////////////////////////////////////////////////////
     // - Do the first call of CombineUnions before starting the major Optimizer rules,
     //   since it can reduce the number of iteration and the other rules could add/move
     //   extra operators between two adjacent Union operators.
     // - Call CombineUnions again in Batch("Operator Optimizations"),
     //   since the other rules might make two separate Unions operators adjacent.
+    // - 再开始主要的优化规则前，首先调用CombineUnions，因为它可以减少迭代次数，其他规则可以增加/移动两个相邻的联合运算符之间的额外运算符
+    // - 再批处理规则Batch("Operator Optmizations")后再次调用CombineUnions，因为其他规则可能使两个独立的联合操作符相邻
     Batch("Union", Once,
       CombineUnions) ::
     Batch("OptimizeLimitZero", Once,
@@ -167,6 +192,12 @@ abstract class Optimizer(catalogManager: CatalogManager)
     // optimizer rules that are triggered when there is a filter
     // (e.g. InferFiltersFromConstraints). If we run this batch earlier, the query becomes just
     // LocalRelation and does not trigger many rules.
+    // 提前运行一次，这可能会简化计划并降低优化器的成本
+    // 例如，如果存在一个筛选器(如InferFiltersFromConstraints)
+    // filter (LocaRelation)查询将遍历触发所有重要优化器规则
+    // 如果早些运行这个批处理，查询将变为
+    // LocalRelation，并且不会触发许多规则
+
     Batch("LocalRelation early", fixedPoint,
       ConvertToLocalRelation,
       PropagateEmptyRelation,
@@ -1374,6 +1405,8 @@ object PushPredicateThroughNonJoin extends Rule[LogicalPlan] with PredicateHelpe
  * attributes of the left or right side of sub query when applicable.
  *
  * Check https://cwiki.apache.org/confluence/display/Hive/OuterJoinBehavior for more details
+ *
+ * 通过Join谓词下推
  */
 object PushPredicateThroughJoin extends Rule[LogicalPlan] with PredicateHelper {
   /**

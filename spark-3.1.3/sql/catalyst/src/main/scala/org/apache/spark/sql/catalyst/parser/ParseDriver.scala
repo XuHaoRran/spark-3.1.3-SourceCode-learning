@@ -73,6 +73,7 @@ abstract class AbstractSqlParser extends ParserInterface with SQLConfHelper with
 
   /** Creates LogicalPlan for a given SQL string. */
   override def parsePlan(sqlText: String): LogicalPlan = parse(sqlText) { parser =>
+      // 调用了parse
     astBuilder.visitSingleStatement(parser.singleStatement()) match {
       case plan: LogicalPlan => plan
       case _ =>
@@ -104,16 +105,19 @@ abstract class AbstractSqlParser extends ParserInterface with SQLConfHelper with
     try {
       try {
         // first, try parsing with potentially faster SLL mode
+        // 首先，使用可能更快的SLL模式尝试分析
         parser.getInterpreter.setPredictionMode(PredictionMode.SLL)
         toResult(parser)
       }
       catch {
         case e: ParseCancellationException =>
+          // 如果解析失败，使用LL模式进行解析
           // if we fail, parse with LL mode
           tokenStream.seek(0) // rewind input stream
           parser.reset()
 
           // Try Again.
+          // 重新试一次
           parser.getInterpreter.setPredictionMode(PredictionMode.LL)
           toResult(parser)
       }

@@ -26,6 +26,10 @@ import org.apache.spark.sql.{SparkSession, SQLContext}
 /**
  * An instance of the Spark SQL execution engine that integrates with data stored in Hive.
  * Configuration for Hive is read from hive-site.xml on the classpath.
+ *
+ * HiveContext：是将存储在Hive中的数据集成Spark SQL执行引擎的实例。
+ *
+ * 配置文件Hive从classpath中的hive-site.xml读取。HiveContext继承自SQLContext类。
  */
 @deprecated("Use SparkSession.builder.enableHiveSupport instead", "2.0.0")
 class HiveContext private[hive](_sparkSession: SparkSession)

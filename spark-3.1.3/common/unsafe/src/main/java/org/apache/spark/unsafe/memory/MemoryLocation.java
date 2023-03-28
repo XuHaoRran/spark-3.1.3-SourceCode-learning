@@ -20,16 +20,21 @@ package org.apache.spark.unsafe.memory;
 import javax.annotation.Nullable;
 
 /**
+ * 内存位置。进行跟踪
+ * 通过内存地址跟踪(堆外内存分配)，或通过 JVM 对象的偏移量(堆内存分配)
  * A memory location. Tracked either by a memory address (with off-heap allocation),
  * or by an offset from a JVM object (on-heap allocation).
  */
 public class MemoryLocation {
 
+  // Off-Heap内存模式，obj为null，地址由64位的offset唯一标识
+  // On-Heap内存模式，obj为堆中该对象的引用，offset为该对象中的偏移量
   @Nullable
   Object obj;
 
   long offset;
 
+  // 一个内存地址，用于跟踪Off-Heap模式下的内存地址或On-Heap模式下的内存地址
   public MemoryLocation(@Nullable Object obj, long offset) {
     this.obj = obj;
     this.offset = offset;

@@ -38,9 +38,13 @@ import org.apache.spark.unsafe.types.UTF8String
 
 
 /**
+ * ConstantFolding（常量叠加）：常量合并是Expression优化的一种，对于可以直接计算的常量，不用放到物理执行里去生成对象来计算，直接在计划里计算即可。
  * Replaces [[Expression Expressions]] that can be statically evaluated with
  * equivalent [[Literal]] values.
+ *
+ *
  */
+
 object ConstantFolding extends Rule[LogicalPlan] {
 
   private def hasNoSideEffect(e: Expression): Boolean = e match {
@@ -284,6 +288,8 @@ object OptimizeIn extends Rule[LogicalPlan] {
  * 2. Eliminates / extracts common factors.
  * 3. Merge same expressions
  * 4. Removes `Not` operator.
+ *
+ * 对布尔表达式的优化，类同Java布尔表达式中的短路判断，看看布尔表达式两边能不能通过只计算一边，省去计算另一边而提高效率，称为简化布尔表达式。
  */
 object BooleanSimplification extends Rule[LogicalPlan] with PredicateHelper {
   def apply(plan: LogicalPlan): LogicalPlan = plan transform {
@@ -534,6 +540,8 @@ object SimplifyConditionals extends Rule[LogicalPlan] with PredicateHelper {
  * Simplifies LIKE expressions that do not need full regular expressions to evaluate the condition.
  * For example, when the expression is just checking to see if a string starts with a given
  * pattern.
+ *
+ * like表达式简
  */
 object LikeSimplification extends Rule[LogicalPlan] {
   // if guards below protect from escapes on trailing %.
@@ -616,6 +624,8 @@ object LikeSimplification extends Rule[LogicalPlan] {
  * Replaces [[Expression Expressions]] that can be statically evaluated with
  * equivalent [[Literal]] values. This rule is more specific with
  * Null value propagation from bottom to top of the expression tree.
+ * Null值的处理，可以使用NullPropagation。例如，sql("select count(null) from src where key is not null")
+ * 这样一个SQL语句会转换成sql("select count(0) from src where key is not null")来处理。
  */
 object NullPropagation extends Rule[LogicalPlan] {
   private def isNullLiteral(e: Expression): Boolean = e match {
@@ -797,6 +807,7 @@ object FoldablePropagation extends Rule[LogicalPlan] {
 
 
 /**
+ * Cast简化
  * Removes [[Cast Casts]] that are unnecessary because the input is already the correct type.
  */
 object SimplifyCasts extends Rule[LogicalPlan] {
@@ -823,8 +834,11 @@ object RemoveDispensableExpressions extends Rule[LogicalPlan] {
 
 
 /**
+ *
  * Removes the inner case conversion expressions that are unnecessary because
  * the inner conversion is overwritten by the outer one.
+ * CASE大小写转化表达式简化。
+ * For example, `upper(lower('a))` can be simplified to `upper('a)`.
  */
 object SimplifyCaseConversionExpressions extends Rule[LogicalPlan] {
   def apply(plan: LogicalPlan): LogicalPlan = plan transform {

@@ -54,9 +54,12 @@ import org.apache.spark.unsafe.types.UTF8String
 import org.apache.spark.util.Utils
 
 /**
+ *
  * A trivial [[Analyzer]] with a dummy [[SessionCatalog]] and [[EmptyFunctionRegistry]].
  * Used for testing when all relations are already filled in and the analyzer needs only
  * to resolve attribute references.
+ *
+ * Analyzer内定义了的逻辑计划解析规则.
  */
 object SimpleAnalyzer extends Analyzer(
   new CatalogManager(

@@ -60,6 +60,9 @@ case class PlanLater(plan: LogicalPlan) extends LeafExecNode {
   }
 }
 
+// 在Spark-SQL项目中，SparkStrategies继承了QueryPlanner[SparkPlan]，内部制定了LeftSemiJoin、HashJoin、PartialAggregation、
+// BroadcastNestedLoopJoin、CartesianProduct等几种策略，每种策略接受的都是一个LogicalPlan，
+// 生成的是Seq[SparkPlan]，每个SparkPlan理解为具体RDD的算子操作。
 abstract class SparkStrategies extends QueryPlanner[SparkPlan] {
   self: SparkPlanner =>
 

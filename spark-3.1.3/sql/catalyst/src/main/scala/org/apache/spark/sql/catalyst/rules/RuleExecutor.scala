@@ -116,16 +116,22 @@ abstract class RuleExecutor[TreeType <: TreeNode[_]] extends Logging {
   /**
    * An execution strategy for rules that indicates the maximum number of executions. If the
    * execution reaches fix point (i.e. converge) before maxIterations, it will stop.
+   *
+   * 表示最大执行次数的规则执行策略。如果执行达到固定点（即收敛）之前maxIterations，则将停止。
    */
   abstract class Strategy {
 
     /** The maximum number of executions. */
+    // 最大执行次数
+
     def maxIterations: Int
 
     /** Whether to throw exception when exceeding the maximum number. */
+      // 是否在超过最大值时抛出异常
     def errorOnExceed: Boolean = false
 
     /** The key of SQLConf setting to tune maxIterations */
+      // 调整maxIterations的SQLConf设置的键
     def maxIterationsSetting: String = null
   }
 
@@ -151,11 +157,15 @@ abstract class RuleExecutor[TreeType <: TreeNode[_]] extends Logging {
   protected val excludedOnceBatches: Set[String] = Set.empty
 
   /**
+   *
    * Defines a check function that checks for structural integrity of the plan after the execution
    * of each rule. For example, we can check whether a plan is still resolved after each rule in
    * `Optimizer`, so we can catch rules that return invalid plans. The check function returns
    * `false` if the given plan doesn't pass the structural integrity check.
    */
+    // 定义一个检查函数，该函数检查每个规则执行后计划的结构完整性。
+    // 例如，我们可以检查优化器中每个规则返回的计划是否仍然解析，以便捕获返回无效计划的规则。
+    // 如果给定的计划未通过结构完整性检查，则检查函数返回“false”。
   protected def isPlanIntegral(previousPlan: TreeType, currentPlan: TreeType): Boolean = true
 
   /**
@@ -178,6 +188,7 @@ abstract class RuleExecutor[TreeType <: TreeNode[_]] extends Logging {
    * rule using the provided tracker.
    * @see [[execute]]
    */
+    // 使用提供的跟踪器跟踪每个规则的计时信息，执行子类定义的规则批次。
   def executeAndTrack(plan: TreeType, tracker: QueryPlanningTracker): TreeType = {
     QueryPlanningTracker.withTracker(tracker) {
       execute(plan)
@@ -188,6 +199,7 @@ abstract class RuleExecutor[TreeType <: TreeNode[_]] extends Logging {
    * Executes the batches of rules defined by the subclass. The batches are executed serially
    * using the defined execution strategy. Within each batch, rules are also executed serially.
    */
+    // 使用定义的执行策略串行执行子类定义的规则批次。在每个批次中，规则也是串行执行的。
   def execute(plan: TreeType): TreeType = {
     var curPlan = plan
     val queryExecutionMetrics = RuleExecutor.queryExecutionMeter
@@ -196,6 +208,7 @@ abstract class RuleExecutor[TreeType <: TreeNode[_]] extends Logging {
     val beforeMetrics = RuleExecutor.getCurrentMetrics()
 
     // Run the structural integrity checker against the initial input
+    // 运行结构完整性检查器针对初始输入
     if (!isPlanIntegral(plan, plan)) {
       val message = "The structural integrity of the input plan is broken in " +
         s"${this.getClass.getName.stripSuffix("$")}."

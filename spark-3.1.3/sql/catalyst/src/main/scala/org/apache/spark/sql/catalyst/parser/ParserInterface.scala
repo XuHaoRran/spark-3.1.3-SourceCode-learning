@@ -25,16 +25,19 @@ import org.apache.spark.sql.types.{DataType, StructType}
 
 /**
  * Interface for a parser.
+ * 分析器parser的接口
  */
 @DeveloperApi
 trait ParserInterface {
   /**
    * Parse a string to a [[LogicalPlan]].
+   * 解析字符串为逻辑计划【LogicalPlan】
    */
   @throws[ParseException]("Text cannot be parsed to a LogicalPlan")
   def parsePlan(sqlText: String): LogicalPlan
 
   /**
+   * 解析字符串为表达式【Expression】
    * Parse a string to an [[Expression]].
    */
   @throws[ParseException]("Text cannot be parsed to an Expression")
@@ -61,6 +64,7 @@ trait ParserInterface {
   /**
    * Parse a string to a [[StructType]]. The passed SQL string should be a comma separated list
    * of field definitions which will preserve the correct Hive metadata.
+   * 解析字符串为结构类型【StrcutType】，SQL字符串应该使用逗号分割列表字段定义，该字段定义将保存正确的Hive元数据
    */
   @throws[ParseException]("Text cannot be parsed to a schema")
   def parseTableSchema(sqlText: String): StructType

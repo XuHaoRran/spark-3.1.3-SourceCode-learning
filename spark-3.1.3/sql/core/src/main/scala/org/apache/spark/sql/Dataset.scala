@@ -94,6 +94,7 @@ private[sql] object Dataset {
   /** A variant of ofRows that allows passing in a tracker so we can track query parsing time. */
   def ofRows(sparkSession: SparkSession, logicalPlan: LogicalPlan, tracker: QueryPlanningTracker)
     : DataFrame = sparkSession.withActive {
+
     val qe = new QueryExecution(sparkSession, logicalPlan, tracker)
     qe.assertAnalyzed()
     new Dataset[Row](qe, RowEncoder(qe.analyzed.schema))
@@ -2983,7 +2984,10 @@ class Dataset[T] private[sql](
    * @group action
    * @since 1.6.0
    */
-  def collect(): Array[T] = withAction("collect", queryExecution)(collectFromPlan)
+  def collect(): Array[T] = {
+    // 通过withAction方法包裹Dataset的执行，跟踪QueryExecution查询执行及时间成本，并汇报给用户注册的回调函数。
+    withAction("collect", queryExecution)(collectFromPlan)
+  }
 
   /**
    * Returns a Java list that contains all rows in this Dataset.
@@ -3718,6 +3722,7 @@ class Dataset[T] private[sql](
    */
   private def collectFromPlan(plan: SparkPlan): Array[T] = {
     val fromRow = resolvedEnc.createDeserializer()
+    // 开始执行
     plan.executeCollect().map(fromRow)
   }
 

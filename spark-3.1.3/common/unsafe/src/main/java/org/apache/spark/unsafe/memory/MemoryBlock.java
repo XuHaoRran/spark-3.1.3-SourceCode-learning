@@ -22,6 +22,7 @@ import javax.annotation.Nullable;
 import org.apache.spark.unsafe.Platform;
 
 /**
+ * 一个内存块，由一个{@link MemoryLocation}开始，固定大小
  * A consecutive block of memory, starting at a {@link MemoryLocation} with a fixed size.
  */
 public class MemoryBlock extends MemoryLocation {
@@ -45,12 +46,14 @@ public class MemoryBlock extends MemoryLocation {
    */
   public static final int FREED_IN_ALLOCATOR_PAGE_NUMBER = -3;
 
+  // 内存块的大小
   private final long length;
 
   /**
    * Optional page number; used when this MemoryBlock represents a page allocated by a
    * TaskMemoryManager. This field is public so that it can be modified by the TaskMemoryManager,
    * which lives in a different package.
+   * 内存块对应的page号
    */
   public int pageNumber = NO_PAGE_NUMBER;
 
@@ -68,6 +71,7 @@ public class MemoryBlock extends MemoryLocation {
 
   /**
    * Creates a memory block pointing to the memory used by the long array.
+   * 这里提供一个将long数组转换为MemoryBlock内存块的接口
    */
   public static MemoryBlock fromLongArray(final long[] array) {
     return new MemoryBlock(array, Platform.LONG_ARRAY_OFFSET, array.length * 8L);

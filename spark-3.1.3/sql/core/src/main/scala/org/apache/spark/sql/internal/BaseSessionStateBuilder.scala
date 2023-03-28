@@ -99,6 +99,8 @@ abstract class BaseSessionStateBuilder(
    * Internal catalog managing functions registered by the user.
    *
    * This either gets cloned from a pre-existing version or cloned from the built-in registry.
+   *
+   * FunctionRegistry是注册函数，由于存在lookupFunction方法，所以该analyzer支持Function注册，即UDF自定义函数。
    */
   protected lazy val functionRegistry: FunctionRegistry = {
     parentState.map(_.functionRegistry.clone())
@@ -130,8 +132,11 @@ abstract class BaseSessionStateBuilder(
   protected lazy val resourceLoader: SessionResourceLoader = new SessionResourceLoader(session)
 
   /**
+   *
    * Catalog for managing table and database states. If there is a pre-existing catalog, the state
    * of that catalog (temp tables & current database) will be copied into the new catalog.
+   *
+   *
    *
    * Note: this depends on the `conf`, `functionRegistry` and `sqlParser` fields.
    */
@@ -161,6 +166,8 @@ abstract class BaseSessionStateBuilder(
 
   /**
    * Logical query plan analyzer for resolving unresolved attributes and relations.
+   *
+   * 解析仍未解析属性和关系的逻辑查询计划分析器，说明，这取决于conf和catalog字段
    *
    * Note: this depends on the `conf` and `catalog` fields.
    */

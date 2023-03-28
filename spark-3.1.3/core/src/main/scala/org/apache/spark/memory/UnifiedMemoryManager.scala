@@ -41,6 +41,10 @@ import org.apache.spark.storage.BlockId
  * up most of the storage space, in which case the new blocks will be evicted immediately
  * according to their respective storage levels.
  *
+ * spark.memory.fraction` (默认值是0.6)
+ *
+ * UnifiedMemoryManager与StaticMemoryManager一样实现了MemoryManager的几个内存分配、释放的接口，对应分配与释放接口的实现，
+ * 在StaticMemoryManager中相对比较简单，而在UnifiedMemoryManager中，由于考虑到动态借用的情况，实现相对比较复杂，
  * @param onHeapStorageRegionSize Size of the storage region, in bytes.
  *                          This region is not statically reserved; execution can borrow from
  *                          it if necessary. Cached blocks can be evicted only if actual
@@ -89,11 +93,16 @@ private[spark] class UnifiedMemoryManager(
     assertInvariants()
     assert(numBytes >= 0)
     val (executionPool, storagePool, storageRegionSize, maxMemory) = memoryMode match {
+      // 当前内存模式是堆内存，使用onHeapExecutionMemoryPool内存池管理
       case MemoryMode.ON_HEAP => (
         onHeapExecutionMemoryPool,
         onHeapStorageMemoryPool,
         onHeapStorageRegionSize,
         maxHeapMemory)
+      // 当前内存模式是堆外内存，使用offHeapExecutionMemoryPool内存池管理
+
+      // 因此在启动Off-Heap内存模式时，可以将Storage的内存占比（对应配置属性spark.memory.storageFraction）设置高一点，
+      // 虽然在具体分配过程中，Storage也可以向On-Heap这部分Execution借用内存。
       case MemoryMode.OFF_HEAP => (
         offHeapExecutionMemoryPool,
         offHeapStorageMemoryPool,
@@ -202,6 +211,7 @@ object UnifiedMemoryManager {
     new UnifiedMemoryManager(
       conf,
       maxHeapMemory = maxMemory,
+      // 通过配置属性spark.memory.storageFraction来设置存储内存占用比例，默认为0.5
       onHeapStorageRegionSize =
         (maxMemory * conf.get(config.MEMORY_STORAGE_FRACTION)).toLong,
       numCores = numCores)
@@ -209,11 +219,14 @@ object UnifiedMemoryManager {
 
   /**
    * Return the total amount of memory shared between execution and storage, in bytes.
+   * 返回执行和存储之间共享的总内存量（以字节为单位）。
    */
   private def getMaxMemory(conf: SparkConf): Long = {
     val systemMemory = conf.get(TEST_MEMORY)
+    // 当前系统内存,默认为300MB
     val reservedMemory = conf.getLong(TEST_RESERVED_MEMORY.key,
       if (conf.contains(IS_TESTING)) 0 else RESERVED_SYSTEM_MEMORY_BYTES)
+    // 当前最小系统内存，需要300×1.5=450MB，不满足该条件就会报错退出
     val minSystemMemory = (reservedMemory * 1.5).ceil.toLong
     if (systemMemory < minSystemMemory) {
       throw new IllegalArgumentException(s"System memory $systemMemory must " +
@@ -221,6 +234,7 @@ object UnifiedMemoryManager {
         s"option or ${config.DRIVER_MEMORY.key} in Spark configuration.")
     }
     // SPARK-12759 Check executor memory to fail fast if memory is insufficient
+    // 检查执行器内存，如果内存不足，则快速失败
     if (conf.contains(config.EXECUTOR_MEMORY)) {
       val executorMemory = conf.getSizeAsBytes(config.EXECUTOR_MEMORY.key)
       if (executorMemory < minSystemMemory) {
@@ -230,6 +244,9 @@ object UnifiedMemoryManager {
       }
     }
     val usableMemory = systemMemory - reservedMemory
+
+    // 当前Executor与Storage共享的最大内存，可用内存×0.6=600MB
+    // 用户内存可用内存×0.4=400MB
     val memoryFraction = conf.get(config.MEMORY_FRACTION)
     (usableMemory * memoryFraction).toLong
   }

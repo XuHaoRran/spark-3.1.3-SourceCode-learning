@@ -175,6 +175,7 @@ abstract class SparkPlan extends QueryPlan[SparkPlan] with Logging with Serializ
    * Concrete implementations of SparkPlan should override `doExecute`.
    */
   final def execute(): RDD[InternalRow] = executeQuery {
+    // isCanonicalizedPlan用于指示此计划是否是规范化的结果，一个规范化的计划不应该被执行
     if (isCanonicalizedPlan) {
       throw new IllegalStateException("A canonicalized plan is not supposed to be executed.")
     }
@@ -389,6 +390,8 @@ abstract class SparkPlan extends QueryPlan[SparkPlan] with Logging with Serializ
    * 执行查询，以数组形式返回结果
    */
   def executeCollect(): Array[InternalRow] = {
+    // getByteArrayRdd方法封装unsaferows到更快的序列化的字节数组。
+    // 字节数组的格式如下：[size] [bytes of UnsafeRow][size] [bytes of UnsafeRow] … [–1]。UnsafeRow是高度可压缩的（任何列至少8B），字节数组也是可压缩的
     val byteArrayRdd = getByteArrayRdd()
 
     val results = ArrayBuffer[InternalRow]()

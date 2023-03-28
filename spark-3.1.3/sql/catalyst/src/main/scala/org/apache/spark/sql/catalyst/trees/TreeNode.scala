@@ -79,6 +79,22 @@ object CurrentOrigin {
 // A tag of a `TreeNode`, which defines name and type
 case class TreeNodeTag[T](name: String)
 
+/**
+ * Logical Plans、Expressions、Physical Operators都可以使用Tree表示。
+ * 1.Tree的具体操作是通过TreeNode来实现的。
+ * 2.TreeNode可以使用Scala的集合操作方法（如foreach、map、flatMap、collect等）进行操作。
+ * 有了TreeNode，通过Tree中各个TreeNode之间的关系，可以对Tree进行遍历操作，如使用transformDown、
+ * transformUp将Rule应用到给定的树段，然后用结果替代旧的树段；也可以使用transformChildrenDown、
+ * transformChildrenUp对一个给定的节点进行操作，通过迭代将Rule应用到该节点以及子节点。
+ *
+ *
+ * TreeNode可以细分成3种类型的Node。
+ * 1.UnaryNode一元节点，即只有一个子节点，如Limit、Filter操作。
+ * 2.BinaryNode二元节点，即有左右子节点的二叉节点，如Join、Union操作。
+ * 3.LeafNode叶子节点，没有子节点的节点，主要用于命令类操作，如SetCommand。
+ *
+ * @tparam BaseType
+ */
 // scalastyle:off
 abstract class TreeNode[BaseType <: TreeNode[BaseType]] extends Product {
 // scalastyle:on

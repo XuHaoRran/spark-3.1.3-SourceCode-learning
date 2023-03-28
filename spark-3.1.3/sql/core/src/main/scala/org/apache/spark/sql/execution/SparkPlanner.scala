@@ -25,6 +25,12 @@ import org.apache.spark.sql.execution.adaptive.LogicalQueryStageStrategy
 import org.apache.spark.sql.execution.datasources.{DataSourceStrategy, FileSourceStrategy}
 import org.apache.spark.sql.execution.datasources.v2.DataSourceV2Strategy
 
+/**
+ * 优化后的执行计划提交给SparkPlanner处理，SparkPlanner里面定义了一些策略，
+ * 目的是根据逻辑执行计划树生成最后可以执行的物理执行计划树，即得到SparkPlan。
+ * @param session
+ * @param experimentalMethods
+ */
 class SparkPlanner(val session: SparkSession, val experimentalMethods: ExperimentalMethods)
   extends SparkStrategies with SQLConfHelper {
 

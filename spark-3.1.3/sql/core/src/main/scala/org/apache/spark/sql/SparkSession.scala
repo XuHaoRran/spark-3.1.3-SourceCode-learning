@@ -145,6 +145,10 @@ class SparkSession private(
    *
    * This is internal to Spark and there is no guarantee on interface stability.
    *
+   * SessionState在构建SparkSession时进行初始化，SessionState是跨会话隔离状态，
+   * 包括SQL配置、临时表、已注册功能，以及一切接受[org.apache.spark.sql.internal.SQLConf]的配置内容。
+   * 如果parentSessionState不为空，SessionState将从父节点复制。这是Spark内部使用。
+   *
    * @since 2.2.0
    */
   @Unstable
@@ -153,6 +157,7 @@ class SparkSession private(
     parentSessionState
       .map(_.clone(this))
       .getOrElse {
+        // instantiateSessionState是辅助方法来创建一个基于配置className的SessionState实例，结果是SessionState，或者是基于Hive的SessionState。
         val state = SparkSession.instantiateSessionState(
           SparkSession.sessionStateClassName(sparkContext.conf),
           self,
@@ -612,9 +617,12 @@ class SparkSession private(
    */
   def sql(sqlText: String): DataFrame = withActive {
     val tracker = new QueryPlanningTracker
+    // sessionState.sqlParser.parsePlan(sqlText)参数值，
+    // sessionState.sqlParser方法实例化了一个SparkSqlParser
     val plan = tracker.measurePhase(QueryPlanningTracker.PARSING) {
       sessionState.sqlParser.parsePlan(sqlText)
     }
+    // 调用了Dataset.ofRows方法的
     Dataset.ofRows(self, plan, tracker)
   }
 
@@ -1156,6 +1164,7 @@ object SparkSession extends Logging {
       //   Map[String, String])
       val clazz = Utils.classForName(className)
       val ctor = clazz.getConstructors.head
+      // 调用ctor.newInstance(sparkSession,None).asInstanceOf[BaseSessionStateBuilder].build方法，构建Analyzer实例对象。
       ctor.newInstance(sparkSession, None, options).asInstanceOf[BaseSessionStateBuilder].build()
     } catch {
       case NonFatal(e) =>

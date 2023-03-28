@@ -51,6 +51,7 @@ import org.apache.spark.util.Utils;
 
 /**
  * An external sorter that is specialized for sort-based shuffle.
+ * 为sort-based shuffle专门设计的外部排序器
  * <p>
  * Incoming records are appended to data pages. When all records have been inserted (or when the
  * current thread's shuffle memory limit is reached), the in-memory records are sorted according to
@@ -60,10 +61,18 @@ import org.apache.spark.util.Utils;
  * {@link org.apache.spark.shuffle.sort.SortShuffleWriter}: each output partition's records are
  * written as a single serialized, compressed stream that can be read with a new decompression and
  * deserialization stream.
+ *
+ * 输入的记录被追加到数据页。当所有记录都被插入（或者当前线程的shuffle内存限制达到时），
+ * 根据它们的分区id对内存中的记录进行排序（使用{@link ShuffleInMemorySorter}）。
+ * 然后将排序的记录写入单个输出文件（或多个文件，如果我们已经溢出）。
+ * 输出文件的格式与{@link org.apache.spark.shuffle.sort.SortShuffleWriter}
+ * 写入的最终输出文件的格式相同：每个输出分区的记录都被写为一个序列化的、压缩的流，可以使用新的解压缩和反序列化流进行读取。
  * <p>
  * Unlike {@link org.apache.spark.util.collection.ExternalSorter}, this sorter does not merge its
  * spill files. Instead, this merging is performed in {@link UnsafeShuffleWriter}, which uses a
  * specialized merge procedure that avoids extra serialization/deserialization.
+ *
+ * 与{@link org.apache.spark.util.collection.ExternalSorter}不同，此排序器不会合并其溢出文件。
  */
 final class ShuffleExternalSorter extends MemoryConsumer {
 
@@ -138,7 +147,10 @@ final class ShuffleExternalSorter extends MemoryConsumer {
   /**
    * Sorts the in-memory records and writes the sorted records to an on-disk file.
    * This method does not free the sort data structures.
-   *
+   * 排序内存中的记录，并将排序的记录写入磁盘文件。此方法不会释放排序数据结构。
+   * 当isLastFile为：
+   * 1.true时，表示最后一个输出文件，此时写的数据量统计在Shuffle write的度量信息中
+   * 2.false时，则同时统计在Shuffle write和shuffle spill的度量信息中
    * @param isLastFile if true, this indicates that we're writing the final output file and that the
    *                   bytes written should be counted towards shuffle spill metrics rather than
    *                   shuffle write metrics.
@@ -274,11 +286,13 @@ final class ShuffleExternalSorter extends MemoryConsumer {
       spills.size() > 1 ? " times" : " time");
 
     writeSortedFile(false);
+    // writeSortedFile不会释放内存，因此需要手动释放
     final long spillSize = freeMemory();
     inMemSorter.reset();
     // Reset the in-memory sorter's pointer array only after freeing up the memory pages holding the
     // records. Otherwise, if the task is over allocated memory, then without freeing the memory
     // pages, we might not be able to get memory for the pointer array.
+    // 重置内存排序器的指针数组，只有在释放内存页之后，否则如果任务分配了过多的内存，那么没有释放内存页，我们可能无法获得指针数组的内存
     taskContext.taskMetrics().incMemoryBytesSpilled(spillSize);
     return spillSize;
   }
@@ -390,6 +404,7 @@ final class ShuffleExternalSorter extends MemoryConsumer {
 
   /**
    * Write a record to the shuffle sorter.
+   * 向shuffle排序器写入一条记录
    */
   public void insertRecord(Object recordBase, long recordOffset, int length, int partitionId)
     throws IOException {
@@ -401,20 +416,28 @@ final class ShuffleExternalSorter extends MemoryConsumer {
         numElementsForSpillThreshold);
       spill();
     }
-
+    // 如果需要，增加内存中排序所需的LoggArray内存大小
     growPointerArrayIfNecessary();
     final int uaoSize = UnsafeAlignedOffset.getUaoSize();
     // Need 4 or 8 bytes to store the record length.
+    // 需要4个字节来存储记录长度
+    // 记录插入时，以记录长度作为起始信息，然后是对应该长度的记录数据
+    // 因此申请的内存大小需要考虑记录长度所占的4个字节
     final int required = length + uaoSize;
     acquireNewPageIfNecessary(required);
 
     assert(currentPage != null);
+    // 获取当前页的base object
     final Object base = currentPage.getBaseObject();
+    // 针对currentPage内的页游标进行编码
+    // 该地址用于记录当前记录在currentPage中的位置
     final long recordAddress = taskMemoryManager.encodePageNumberAndOffset(currentPage, pageCursor);
     UnsafeAlignedOffset.putSize(base, pageCursor, length);
     pageCursor += uaoSize;
+    // 将记录数据拷贝到base+pagecursor中（已更新4字节）中，长度为记录长度，更新当前页内地址pagecursor
     Platform.copyMemory(recordBase, recordOffset, base, pageCursor, length);
     pageCursor += length;
+    // 向currentPage中插入数据
     inMemSorter.insertRecord(recordAddress, partitionId);
   }
 

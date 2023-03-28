@@ -49,6 +49,9 @@ import org.apache.spark.util.Utils
  *
  * While this is not a public class, we should avoid changing the function names for the sake of
  * changing them, because a lot of developers use the feature for debugging.
+ *
+ * 执行关联查询主要的工作流程:利用Spark的设计使开发人员很容易进入查询执行的中间阶段。
+ * 虽然QueryExecution 不是一个公共类，但要避免更改它们，因为很多开发人员都使用这个特性进行调试
  */
 class QueryExecution(
     val sparkSession: SparkSession,
@@ -67,9 +70,11 @@ class QueryExecution(
       UnsupportedOperationChecker.checkForBatch(analyzed)
     }
   }
-
+  // 调用analyzer解析器
   lazy val analyzed: LogicalPlan = executePhase(QueryPlanningTracker.ANALYSIS) {
     // We can't clone `logical` here, which will reset the `_analyzed` flag.
+    // 对逻辑计划执行子类定义的批处理规则，对规则进行转换和排序，以便捕获第一个可能的失败
+    // 级联解析失败的结果
     sparkSession.sessionState.analyzer.executeAndCheck(logical, tracker)
   }
 
@@ -80,7 +85,7 @@ class QueryExecution(
     // optimizing and planning.
     sparkSession.sharedState.cacheManager.useCachedData(analyzed.clone())
   }
-
+  // 调用optimizer优化器
   lazy val optimizedPlan: LogicalPlan = executePhase(QueryPlanningTracker.OPTIMIZATION) {
     // clone the plan to avoid sharing the plan instance between different stages like analyzing,
     // optimizing and planning.
@@ -135,6 +140,7 @@ class QueryExecution(
   /** Get the metrics observed during the execution of the query plan. */
   def observedMetrics: Map[String, Row] = CollectMetricsExec.collect(executedPlan)
 
+  // 为了执行物理计划而应用的一系列规则
   protected def preparations: Seq[Rule[SparkPlan]] = {
     QueryExecution.preparations(sparkSession,
       Option(InsertAdaptiveSparkPlan(AdaptiveExecutionContext(sparkSession, this))))
@@ -268,6 +274,7 @@ class QueryExecution(
 
   /**
    * Redact the sensitive information in the given string.
+   * 修改给定字符传中的敏感信息
    */
   private def withRedaction(message: String): String = {
     Utils.redact(sparkSession.sessionState.conf.stringRedactionPattern, message)
@@ -364,6 +371,10 @@ object QueryExecution {
   /**
    * Prepares a planned [[SparkPlan]] for execution by inserting shuffle operations and internal
    * row format conversions as needed.
+   *
+   * 在最终真正执行物理执行计划前，还要进行prepareForExecution规则处理。QueryExecution里定义这个过程叫prepareForExecution。
+   *
+   * 准备一个计划【SparkPlan】，用于执行Shuffle算子和内部行格式转换的需要
    */
   private[execution] def prepareForExecution(
       preparations: Seq[Rule[SparkPlan]],

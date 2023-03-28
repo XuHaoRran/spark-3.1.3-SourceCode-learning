@@ -39,6 +39,7 @@ import org.apache.spark.sql.internal.{HiveSerDe, SQLConf, VariableSubstitution}
 
 /**
  * Concrete parser for Spark SQL statements.
+ * SqlParser的功能是将SQL语句解析成逻辑上的UnesolvedLogicalPlan
  */
 class SparkSqlParser extends AbstractSqlParser {
   val astBuilder = new SparkSqlAstBuilder()
