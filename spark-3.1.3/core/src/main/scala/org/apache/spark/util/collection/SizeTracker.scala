@@ -77,6 +77,7 @@ private[spark] trait SizeTracker {
   private def takeSample(): Unit = {
     samples.enqueue(Sample(SizeEstimator.estimate(this), numUpdates))
     // Only use the last two samples to extrapolate
+    // 只使用最后两个样本进行估值
     if (samples.size > 2) {
       samples.dequeue()
     }
@@ -84,6 +85,7 @@ private[spark] trait SizeTracker {
       case latest :: previous :: tail =>
         (latest.size - previous.size).toDouble / (latest.numUpdates - previous.numUpdates)
       // If fewer than 2 samples, assume no change
+      // 如果少于2个样本，则假设没有变化
       case _ => 0
     }
     bytesPerUpdate = math.max(0, bytesDelta)

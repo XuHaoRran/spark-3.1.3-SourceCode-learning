@@ -325,6 +325,10 @@ package object config {
     .intConf
     .createOptional
 
+  /**
+   * 在MemoryManager中有一个很关键的代码，如果想使用OffHeap作为储存的话，必须设置spark.memory.offHeap.enabled为true，
+   * 还要确定offHeap系统的空间必须大于0
+   */
   private[spark] val MEMORY_OFFHEAP_ENABLED = ConfigBuilder("spark.memory.offHeap.enabled")
     .doc("If true, Spark will attempt to use off-heap memory for certain operations. " +
       "If off-heap memory use is enabled, then spark.memory.offHeap.size must be positive.")
@@ -628,6 +632,20 @@ package object config {
     .timeConf(TimeUnit.MILLISECONDS)
     .createWithDefaultString("3s")
 
+  /**
+   * Spark.Shuffle.service.enabled必须配置为true，默认为false。如果这个配置设置为true，
+   * BlockManager实例生成时，需要读取Spark.Shuffle.service.port配置的Shuffle端口，
+   * 同时对应BlockManager的ShuffleClient不再是默认的BlockTransferService实例，
+   * 而是ExternalShuffleClient实例。
+   *
+   *
+   *
+   *
+   * BlockManager.scala中客户端读取其他Executor上的Shuffle文件有两个方式：
+   * 一种方式是在spark.shuffle.service.enabled设置为true时，创建shuffleClient为ExternalShuffleClient；
+   * 另一种方式是在spark.shuffle.service.enabled设置为false时，创建shuffleClient为BlockTransferService，
+   * 直接读取其他Executors的数据。
+   */
   private[spark] val SHUFFLE_SERVICE_ENABLED =
     ConfigBuilder("spark.shuffle.service.enabled")
       .version("1.2.0")
@@ -652,6 +670,9 @@ package object config {
       .booleanConf
       .createWithDefault(true)
 
+  /**
+   * Spark.Shuffle.service.port是Shuffle服务监听数据获取请求的端口，可选配置，默认值为7337。
+   */
   private[spark] val SHUFFLE_SERVICE_PORT =
     ConfigBuilder("spark.shuffle.service.port").version("1.2.0").intConf.createWithDefault(7337)
 
@@ -1185,6 +1206,14 @@ package object config {
       .stringConf
       .createWithDefault(classOf[LocalDiskShuffleDataIO].getName)
 
+  /**
+   * Spark.Shuffle.file.buffer参数用于设置Shuffle Write Task的BufferedOutputStream的buffer缓冲大小。
+   * 将数据写到磁盘文件之前，先写入buffer缓冲中，待缓冲写满之后，才会溢写到磁盘。如果作业可用的内存资源较为充足，
+   * 则可以适当增加这个参数的大小（如64KB），从而减少Shuffle Write过程中溢写磁盘文件的次数，也就可以减少磁盘I/O次数，
+   * 进而提升性能。在实践中发现，
+   * 合理调节该参数，性能会有1%～5%的提升
+   * 。
+   */
   private[spark] val SHUFFLE_FILE_BUFFER_SIZE =
     ConfigBuilder("spark.shuffle.file.buffer")
       .doc("Size of the in-memory buffer for each shuffle file output stream, in KiB unless " +
@@ -1207,7 +1236,9 @@ package object config {
         s"The buffer size must be positive and less than or equal to" +
           s" ${ByteArrayMethods.MAX_ROUNDED_ARRAY_LENGTH / 1024}.")
       .createWithDefaultString("32k")
-
+  /**
+   * diskWriteBufferSize是将已排序的记录写入磁盘文件时要使用的缓冲区大小
+   */
   private[spark] val SHUFFLE_DISK_WRITE_BUFFER_SIZE =
     ConfigBuilder("spark.shuffle.spill.diskWriteBufferSize")
       .doc("The buffer size, in bytes, to use when writing the sorted records to an on-disk file.")
@@ -1254,6 +1285,12 @@ package object config {
     .toSequence
     .createOptional
 
+  /**
+   * spark.shuffle.spill.numElementsForceSpillThreshold
+   * 是强制shuffle排序溢出前内存中元素的最大数目。
+   * 默认情况下，它是Integer.MAX_VALUE，
+   * 这意味着在达到某些限制（如排序器中指针数组的最大页面大小限制）之前，将不会强制排序器溢出。
+   */
   private[spark] val SHUFFLE_SPILL_NUM_ELEMENTS_FORCE_SPILL_THRESHOLD =
     ConfigBuilder("spark.shuffle.spill.numElementsForceSpillThreshold")
       .internal()
@@ -1305,6 +1342,12 @@ package object config {
         s"The buffer size must be greater than 0 and less than or equal to ${Int.MaxValue}.")
       .createWithDefault(4096)
 
+  /**
+   * Spark.Shuffle.compress参数是判断是否对mapper端的聚合输出进行压缩，默认是true，
+   * 表示在每个Shuffle的过程中都会对mapper端的输出进行压缩。例如，说几千台或者上万台的机器进行汇聚计算，
+   * 数据量和网络传输会非常大，这会造成大量内存消耗、磁盘I/O消耗和网络I/O消耗。此时如果在Mapper端进行了压缩，
+   * 就会减少Shuffle过程中下一个Stage向上一个Stage抓数据的网络开销，大大地减轻Shuffle的压力。
+   */
   private[spark] val SHUFFLE_COMPRESS =
     ConfigBuilder("spark.shuffle.compress")
       .doc("Whether to compress shuffle output. Compression will use " +
@@ -1313,6 +1356,14 @@ package object config {
       .booleanConf
       .createWithDefault(true)
 
+  /**
+   * Spark.Shuffle.spill.compress相比于Spark.Shuffle.compress，
+   * 情况类似，但是Spill数据不会被发送到网络中，仅仅是临时写入本地磁盘，
+   * 而且在一个任务中同时需要执行压缩和解压缩两个步骤，所以对CPU负载的影响会更大一些，而磁盘带宽（如果标配12HDD的话）
+   * 可能往往不会成为Spark应用的主要问题，所以这个参数相对而言，
+   * 或许更需要设置为false
+   * 。
+   */
   private[spark] val SHUFFLE_SPILL_COMPRESS =
     ConfigBuilder("spark.shuffle.spill.compress")
       .doc("Whether to compress data spilled during shuffles. Compression will use " +
@@ -1348,6 +1399,36 @@ package object config {
       .longConf
       .createWithDefault(10000)
 
+  /**
+   * park.Shuffle.Sort.bypassMergeThreshold参数的默认值：200。
+   * 参数说明：当ShuffleManager为SortShuffleManager时，如果Shuffle Read Task的数量小于这个阈值（默认是200），
+   * 则Shuffle Write过程中不会进行排序操作，而是直接按照未经优化的HashShuffleManager方式去写数据，
+   * 但是最后会将每个Task产生的所有临时磁盘文件都合并成一个文件，并会创建单独的索引文件。
+   *
+   * 调优建议：当使用SortShuffleManager时，如果的确不需要排序操作，那么建议将这个参数调大一些，大于Shuffle Read Task的数量。
+   * 那么，此时就会自动启用bypass机制，map-side就不会进行排序了，减少了排序的性能开销。但是，
+   * 这种方式下，依然会产生大量的磁盘文件，因此Shuffle Write性能有待提高
+   * 。
+   *
+   * 这个参数仅适用于SortShuffleManager。SortShuffleManager在处理不需要排序的Shuffle操作时，由于排序使性能下降。
+   * 这个参数决定了在这种情况下，当Reduce分区的数量小于多少的时候，在SortShuffleManager内部不使用Merge Sort的
+   * 方式处理数据，而是与Hash Shuffle类似，直接将分区文件写入单独的文件。不同的是，在最后一步还是会将这些文件合并成
+   * 一个单独的文件。这样，通过去除Sort步骤来加快处理速度，代价是需要并发打开多个文件，所以内存消耗量增加，
+   * 本质上是相对HashShuffleMananger的一个折中方案。这个配置的默认值是200，
+   * 用于设置在Reducer的Partition数目少于多少的时候，Sort Based Shuffle内部不使用Merge Sort方式处理数据，
+   * 而是直接将每个Partition写入单独的文件。这个方式和Hash Based方式类似，区别就是最后这些文件还是会合并成一个单独的文件，
+   * 并通过一个index索引文件来标记不同Partition的位置信息。从Reducer看来，数据文件和索引文件的格式和内部是否做过
+   * Merge Sort是完全相同的。
+   *
+   * 这个可以看作SortBased Shuffle在Shuffle量比较小的时候对于Hash Based Shuffle的一种折中。
+   * 当然，它和Hash Based Shuffle一样，也存在同时打开文件过多导致内存占用增加的问题。
+   * 因此，如果GC比较严重或者内存比较紧张，可以适当地降低这个值。
+   *
+   * SortShuffleWriter.scala中的shouldBypassMergeSort方法中，
+   * 如果分区个数小于spark.shuffle.sort.bypassMergeThreshold（200），
+   * 就返回true，不需要进行排序
+   * 。
+   */
   private[spark] val SHUFFLE_SORT_BYPASS_MERGE_THRESHOLD =
     ConfigBuilder("spark.shuffle.sort.bypassMergeThreshold")
       .doc("In the sort-based shuffle manager, avoid merge-sorting data if there is no " +
@@ -1356,6 +1437,13 @@ package object config {
       .intConf
       .createWithDefault(200)
 
+  /**
+   * 调优建议：由于SortShuffleManager默认会对数据进行排序，
+   * 因此如果你的业务逻辑中需要该排序机制，则使用默认的SortShuffleManager就可以；
+   * 而如果你的业务逻辑不需要对数据进行排序，那么建议参考后面的几个参数调优，
+   * 通过bypass机制或优化的HashShuffleManager来避免排序操作，同时提供较好的磁盘读写性能。
+   * 这里要注意的是，Tungsten-Sort要慎用，因为之前发现了一些相应的Bug。
+   */
   private[spark] val SHUFFLE_MANAGER =
     ConfigBuilder("spark.shuffle.manager")
       .version("1.1.0")
@@ -1646,6 +1734,14 @@ package object config {
       .bytesConf(ByteUnit.BYTE)
       .createWithDefaultString("32k")
 
+  // Spark.io.compression.codec参数用来压缩内部数据，如RDD分区、广播变量和Shuffle输出的数据等，
+  // 所采用的压缩器有lz4、Lzf和Snappy这3种选择，
+  // 默认是Snappy，但和Snappy比较，Lzf的压缩率较高，
+  // 故在有大量Shuffle的情况下，使用Lzf可以提高Shuffle性能，
+  // 进而提高程序的整体效率。
+
+  // ZStandard实现org.apache.spark.io.CompressionCodec，更多详情请参见http://facebook.github.io/zstd/。注意，
+  // 此编解码器的协议不能保证跨Spark版本兼容，这是为了在单个Spark应用程序中用作内部压缩工具。
   private[spark] val IO_COMPRESSION_CODEC =
     ConfigBuilder("spark.io.compression.codec")
       .doc("The codec used to compress internal data such as RDD partitions, event log, " +
@@ -1710,7 +1806,13 @@ package object config {
     .version("0.8.0")
     .fallbackConf(LOCALITY_WAIT)
 
-  private[spark] val REDUCER_MAX_SIZE_IN_FLIGHT = ConfigBuilder("spark.reducer.maxSizeInFlight")
+  /*
+    * Spark.reducer.maxSizeInFlight默认值：48m。
+    * 参数说明：该参数用于设置Shuffle Read Task的Buffer大小，而这个Buffer决定了每次能够拉取多少数据。
+    * 调优建议：如果作业可用的内存资源较为充足，可以适当增加这个参数的大小（如96m），从而减少拉取数据的次数，
+    * 也就可以减少网络传输的次数，进而提升性能。在实践中发现，合理调节该参数，性能会有1%～5%的提升。
+   */
+  private[spark] val REDUCER_MAX_SIZE_IN_FLIGHT = ConfigBuilder("spark.reducer.maxSizeInFligsht")
     .doc("Maximum size of map outputs to fetch simultaneously from each reduce task, " +
       "in MiB unless otherwise specified. Since each output requires us to create a " +
       "buffer to receive it, this represents a fixed memory overhead per reduce task, " +
@@ -1719,6 +1821,9 @@ package object config {
     .bytesConf(ByteUnit.MiB)
     .createWithDefaultString("48m")
 
+  /**
+   * spark.reducer.maxReqsInFlight：是从远程节点请求块的数量，这里是无限次。最好减少其次数。
+   */
   private[spark] val REDUCER_MAX_REQS_IN_FLIGHT = ConfigBuilder("spark.reducer.maxReqsInFlight")
     .doc("This configuration limits the number of remote requests to fetch blocks at " +
       "any given point. When the number of hosts in the cluster increase, " +

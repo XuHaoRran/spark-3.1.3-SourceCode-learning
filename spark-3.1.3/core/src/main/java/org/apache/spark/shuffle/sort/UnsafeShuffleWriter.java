@@ -272,6 +272,15 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
   }
 
   /**
+   * Spark.Shuffle.compress参数是判断是否对mapper端的聚合输出进行压缩，
+   * 默认是true，表示在每个Shuffle的过程中都会对mapper端的输出进行压缩。
+   * 例如，说几千台或者上万台的机器进行汇聚计算，
+   * 数据量和网络传输会非常大，这会造成大量内存消耗、
+   * 磁盘I/O消耗和网络I/O消耗。此时如果在Mapper端进行了压缩，就会减少Shuffle过程中下一个Stage向上一个Stage抓数据的网络开销，
+   * 大大地减轻Shuffle的压力
+   * 。
+   *
+   *
    * Merge zero or more spill files together, choosing the fastest merging strategy based on the
    * number of spills and the IO compression codec.
    * 合并0个或多个Spill的中间文件，基于Spills的个数以及I/O压缩码选择最快速的合并策略，返回包含合并文件中各个分区的数据长度的数组

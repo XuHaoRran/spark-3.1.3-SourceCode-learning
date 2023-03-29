@@ -79,6 +79,11 @@ private[storage] trait BlockEvictionHandler {
  * serialized ByteBuffers.
  *
  * Spark读写数据是以block为单位的，MemoryStore将block数据存储在内存中
+ *
+ * MemoryStore：内存数据被MemoryManger管理，其实最终还是被BlockManger管理，MemoryStore在构造的时候，
+ * 根据上下文创建了block、hashmap等数据结构
+ *
+ * 内存中的存储块，无论是作为反序列化的Java对象数组还是作为序列化的ByteBuffer，都存储在MemoryStore中。
  */
 private[spark] class MemoryStore(
     conf: SparkConf,
@@ -135,11 +140,14 @@ private[spark] class MemoryStore(
   }
 
   /**
+   *
    * Use `size` to test if there is enough space in MemoryStore. If so, create the ByteBuffer and
    * put it into MemoryStore. Otherwise, the ByteBuffer won't be created.
    *
    * The caller should guarantee that `size` is correct.
    *
+   *
+   * 使用size来测试是否有足够的空间在MemoryStore中。如果有，创建ByteBuffer并将其放入MemoryStore中。否则，ByteBuffer将不会被创建。
    * @return true if the put() succeeded, false otherwise.
    */
   def putBytes[T: ClassTag](
@@ -149,6 +157,7 @@ private[spark] class MemoryStore(
       _bytes: () => ChunkedByteBuffer): Boolean = {
     require(!contains(blockId), s"Block $blockId is already present in the MemoryStore")
     if (memoryManager.acquireStorageMemory(blockId, size, memoryMode)) {
+      // 为这个快获得了足够的内存，所以把它放进去
       // We acquired enough memory for the block, so go ahead and put it
       val bytes = _bytes()
       assert(bytes.size == size)
@@ -427,6 +436,8 @@ private[spark] class MemoryStore(
    * Can fail if either the block is bigger than our memory or it would require replacing
    * another block from the same RDD (which leads to a wasteful cyclic replacement pattern for
    * RDDs that don't fit into memory that we want to avoid).
+   * 在尝试释放空间以存储特定块时，尝试释放块以释放一定量的空间。如果块大于我们的内存或者它需要替换同一个RDD的另一个块
+   * （这导致了一个无用的循环替换模式，我们想避免RDD不适合内存的情况），则可能会失败。
    *
    * @param blockId the ID of the block we are freeing space for, if any
    * @param space the size of this block

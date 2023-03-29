@@ -678,6 +678,8 @@ private[spark] class BlockManager(
           // If this block manager receives a request for a block that it doesn't have then it's
           // likely that the master has outdated block statuses for this block. Therefore, we send
           // an RPC so that this block is marked as being unavailable from this block manager.
+          // 如果这个块管理器接收的请求是一个它没有的块，那么它很可能是主人对这个块的状态有过时的块。因此，
+          // 我们发送一个RPC，以便这个块被标记为不可用的块管理器。
           reportBlockStatus(blockId, BlockStatus.empty)
           throw new BlockNotFoundException(blockId.toString)
       }

@@ -124,6 +124,8 @@ class AppendOnlyMap[K, V](initialCapacity: Int = 64)
   /**
    * Set the value for key to updateFunc(hadValue, oldValue), where oldValue will be the old value
    * for key, if any, or null otherwise. Returns the newly updated value.
+   * 使用聚合算法获得新的值
+   *
    */
   def changeValue(key: K, updateFunc: (Boolean, V) => V): V = {
     assert(!destroyed, destructionMessage)
@@ -136,6 +138,7 @@ class AppendOnlyMap[K, V](initialCapacity: Int = 64)
       haveNullValue = true
       return nullValue
     }
+    // 获取位置，根据Key的hashCode以及掩码获得位置。curKey获取Key的位置，偶数位(2×pos)表示Key的内容，奇数位(2×pos + 1)表示Value的内容。
     var pos = rehash(k.hashCode) & mask
     var i = 1
     while (true) {
@@ -144,6 +147,7 @@ class AppendOnlyMap[K, V](initialCapacity: Int = 64)
         val newValue = updateFunc(false, null.asInstanceOf[V])
         data(2 * pos) = k
         data(2 * pos + 1) = newValue.asInstanceOf[AnyRef]
+        // 如果超过了阈值，就扩容
         incrementSize()
         return newValue
       } else if (k.eq(curKey) || k.equals(curKey)) {
@@ -213,12 +217,14 @@ class AppendOnlyMap[K, V](initialCapacity: Int = 64)
   /** Double the table's size and re-hash everything */
   protected def growTable(): Unit = {
     // capacity < MAXIMUM_CAPACITY (2 ^ 29) so capacity * 2 won't overflow
+    // 容量小于最大容量，扩容2倍
     val newCapacity = capacity * 2
     require(newCapacity <= MAXIMUM_CAPACITY, s"Can't contain more than ${growThreshold} elements")
     val newData = new Array[AnyRef](2 * newCapacity)
     val newMask = newCapacity - 1
     // Insert all our old values into the new array. Note that because our old keys are
     // unique, there's no need to check for equality here when we insert.
+    // 将旧的数据插入到新的数组中
     var oldPos = 0
     while (oldPos < capacity) {
       if (!data(2 * oldPos).eq(null)) {
@@ -256,6 +262,7 @@ class AppendOnlyMap[K, V](initialCapacity: Int = 64)
   /**
    * Return an iterator of the map in sorted order. This provides a way to sort the map without
    * using additional memory, at the expense of destroying the validity of the map.
+   * 按排序顺序返回映射的迭代器。这提供了一种方法来排序map没有使用额外的内存，以破坏map的有效性为代价
    */
   def destructiveSortedIterator(keyComparator: Comparator[K]): Iterator[(K, V)] = {
     destroyed = true
@@ -270,7 +277,7 @@ class AppendOnlyMap[K, V](initialCapacity: Int = 64)
       keyIndex += 1
     }
     assert(curSize == newIndex + (if (haveNullValue) 1 else 0))
-
+    // sorter里面使用的是timSort算法
     new Sorter(new KVArraySortDataFormat[K, AnyRef]).sort(data, 0, newIndex, keyComparator)
 
     new Iterator[(K, V)] {

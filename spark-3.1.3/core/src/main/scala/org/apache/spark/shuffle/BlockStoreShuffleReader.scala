@@ -35,7 +35,7 @@ private[spark] class BlockStoreShuffleReader[K, C](
     handle: BaseShuffleHandle[K, _, C],
     blocksByAddress: Iterator[(BlockManagerId, Seq[(BlockId, Long, Int)])],
     context: TaskContext,
-    readMetrics: ShuffleReadMetricsReporter,
+    readMetrics: ShuffleReadMetricsReporter, // 每条记录被读取后，要更新Metrics，这样在Web UI控制台或者交互式控制台上就会看到相关的信息。Shuffle的运行肯定需要相关的Metrics。metricIter是一个迭代器。
     serializerManager: SerializerManager = SparkEnv.get.serializerManager,
     blockManager: BlockManager = SparkEnv.get.blockManager,
     mapOutputTracker: MapOutputTracker = SparkEnv.get.mapOutputTracker,
@@ -113,7 +113,13 @@ private[spark] class BlockStoreShuffleReader[K, C](
     // An interruptible iterator must be used here in order to support task cancellation
     // 为了支持任务取消，这里必须使用可中断迭代器
     val interruptibleIter = new InterruptibleIterator[(Any, Any)](context, metricIter)
-    // 对读取到的数据进行聚合处理
+    // aggregatedIter判断在Mapper端进行聚合怎么做；不在Mapper端聚合怎么做。首先判断aggregator是否被定义，
+    // 如果已经定义aggregator，再判断map端是否需聚合，我们谈的是Reducer端，为什么这里需在Mapper端进行聚合呢？
+    // 原因很简单：Reducer可能还有下一个Stage，如果还有下一个Stage，那这个Reducer对于下一个Stage而言，
+    // 其实就是Mapper，是Mapper就须考虑在本地是否进行聚合。迭代是一个DAG图，假设如果有100个Stage，
+    // 这里是第10个Stage，作为第9个Stage的Reducer端，但是作为第11个Stage是Mapper端，作为Shuffle而言，
+    // 现在的Reducer端相对于Mapper端。Mapper端需要聚合，则进行combineCombinersByKey。Mapper端也可能不需要聚合，
+    // 只需要进行Reducer端的操作。如果aggregator.isDefined没定义，则出错提示。
     val aggregatedIter: Iterator[Product2[K, C]] = if (dep.aggregator.isDefined) {
       if (dep.mapSideCombine) {
         // We are reading values that are already combined

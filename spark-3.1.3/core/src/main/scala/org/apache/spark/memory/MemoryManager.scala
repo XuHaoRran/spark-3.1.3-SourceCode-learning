@@ -34,6 +34,8 @@ import org.apache.spark.unsafe.memory.MemoryAllocator
  * In this context, execution memory refers to that used for computation in shuffles, joins,
  * sorts and aggregations, while storage memory refers to that used for caching and propagating
  * internal data across the cluster. There exists one MemoryManager per JVM.
+ * 一种抽象的内存管理器，用于强制执行内存如何在执行和存储之间共享。在这种上下文中，执行内存指的是用于在shuffle、join、sort和
+ * aggregation中的计算，而存储内存指的是用于缓存和传播集群内部数据的内存。每个JVM存在一个MemoryManager。
  */
 private[spark] abstract class MemoryManager(
     conf: SparkConf,
@@ -222,6 +224,7 @@ private[spark] abstract class MemoryManager(
   // -- Fields related to Tungsten managed memory -------------------------------------------------
 
   /**
+   * 跟踪Tungsten内存是否在JVM堆上分配还是在堆外分配(sun.misc.Unsafe)
    * Tracks whether Tungsten memory will be allocated on the JVM heap or off-heap using
    * sun.misc.Unsafe.
    */

@@ -45,6 +45,13 @@ import org.apache.spark.storage.BlockId
  *
  * UnifiedMemoryManager与StaticMemoryManager一样实现了MemoryManager的几个内存分配、释放的接口，对应分配与释放接口的实现，
  * 在StaticMemoryManager中相对比较简单，而在UnifiedMemoryManager中，由于考虑到动态借用的情况，实现相对比较复杂，
+ *
+ * 最主要的改变是存储和运行的空间可以动态移动。需要注意的是，执行比存储有更大的优先值，当空间不够时，
+ * 可以向对方借空间，但前提是对方有足够的空间或者是Execution可以强制把Storage一部分空间挤掉。
+ * Excution向Storage借空间有两种方式：第一种方式是Storage曾经向Execution借了空间，它缓存的数据可能非常多，
+ * 当Execution需要空间时，可以强制拿回来；第二种方式是Storage Memory不足50%的情况下，
+ * Storage Memory会很乐意地把剩余空间借给Execution
+ * 。
  * @param onHeapStorageRegionSize Size of the storage region, in bytes.
  *                          This region is not statically reserved; execution can borrow from
  *                          it if necessary. Cached blocks can be evicted only if actual
@@ -85,6 +92,10 @@ private[spark] class UnifiedMemoryManager(
    * task has a chance to ramp up to at least 1 / 2N of the total memory pool (where N is the # of
    * active tasks) before it is forced to spill. This can happen if the number of tasks increase
    * but an older task had a lot of memory already.
+   *
+   * 尝试为当前任务获取最多`numBytes`的执行内存，并返回获得的字节数，如果无法分配，则返回0。此调用可能会阻塞，
+   * 直到某些情况下有足够的空闲内存，以确保每个任务都有机会在强制溢出之前至少达到总内存池的1 / 2N（其中N是活动任务的#）。
+   * 如果任务数量增加，这可能发生，但旧的Task已经分配了内存
    */
   override private[memory] def acquireExecutionMemory(
       numBytes: Long,
@@ -116,6 +127,9 @@ private[spark] class UnifiedMemoryManager(
      * When acquiring memory for a task, the execution pool may need to make multiple
      * attempts. Each attempt must be able to evict storage in case another task jumps in
      * and caches a large block between the attempts. This is called once per attempt.
+     * 增加执行池的大小，通过驱逐缓存的块，从而缩小存储池。当为任务分配内存时，执行池可能需要进行多次尝试。
+     * 每一次尝试都必须能够驱逐存储，以防另一个任务在尝试之间跳入并缓存一个大块。这是每次尝试调用一次。
+     *
      */
     def maybeGrowExecutionPool(extraMemoryNeeded: Long): Unit = {
       if (extraMemoryNeeded > 0) {
@@ -130,7 +144,9 @@ private[spark] class UnifiedMemoryManager(
           // Only reclaim as much space as is necessary and available:
           val spaceToReclaim = storagePool.freeSpaceToShrinkPool(
             math.min(extraMemoryNeeded, memoryReclaimableFromStorage))
+          // 减少storagePool的内存
           storagePool.decrementPoolSize(spaceToReclaim)
+          // 增加executionPool的内存
           executionPool.incrementPoolSize(spaceToReclaim)
         }
       }
@@ -148,15 +164,25 @@ private[spark] class UnifiedMemoryManager(
      * in execution memory allocation across tasks, Otherwise, a task may occupy more than
      * its fair share of execution memory, mistakenly thinking that other tasks can acquire
      * the portion of storage memory that cannot be evicted.
+     *
+     * maybeGrowExecutionPool方法首先判断申请的内存大于0，然后判断剩余空间和Storage曾经占用的空间多，
+     * 把需要的内存资源量提交给StorageMemoryPool的freeSpaceToShrinkPool方法。
      */
     def computeMaxExecutionPoolSize(): Long = {
       maxMemory - math.min(storagePool.memoryUsed, storageRegionSize)
     }
-
+    // 最终调用MemoryPool的acquireMemory方法，申请内存
     executionPool.acquireMemory(
       numBytes, taskAttemptId, maybeGrowExecutionPool, () => computeMaxExecutionPoolSize)
   }
 
+  /**
+   * 主要是为当前的执行任务获得的执行空间，它首先会根据onHeap和offHeap方式进行分配
+   * @param blockId
+   * @param numBytes
+   * @param memoryMode
+   *  @return whether all N bytes were successfully granted.
+   */
   override def acquireStorageMemory(
       blockId: BlockId,
       numBytes: Long,
@@ -175,6 +201,7 @@ private[spark] class UnifiedMemoryManager(
     }
     if (numBytes > maxMemory) {
       // Fail fast if the block simply won't fit
+      // 如果block的大小超过了最大内存，那么直接返回false
       logInfo(s"Will not store $blockId as the required space ($numBytes bytes) exceeds our " +
         s"memory limit ($maxMemory bytes)")
       return false
@@ -182,6 +209,7 @@ private[spark] class UnifiedMemoryManager(
     if (numBytes > storagePool.memoryFree) {
       // There is not enough free memory in the storage pool, so try to borrow free memory from
       // the execution pool.
+      // 如果申请的内存大于storagePool的剩余内存，那么就从executionPool中借用内存
       val memoryBorrowedFromExecution = Math.min(executionPool.memoryFree,
         numBytes - storagePool.memoryFree)
       executionPool.decrementPoolSize(memoryBorrowedFromExecution)
@@ -204,6 +232,11 @@ object UnifiedMemoryManager {
   // This serves a function similar to `spark.memory.fraction`, but guarantees that we reserve
   // sufficient memory for the system even for small heaps. E.g. if we have a 1GB JVM, then
   // the memory used for execution and storage will be (1024 - 300) * 0.6 = 434MB by default.
+  // 为非存储和非执行目的保留固定数量的内存。提供与spark.memory.fraction类似的功能，但保证即使对于小堆也保留足够的内存。
+  // 例如，如果我们有一个1GB的JVM，则执行和存储的内存将为（1024-300）* 0.6 = 434MB。
+  //
+  // 里面的预留空间是300MB
+  //
   private val RESERVED_SYSTEM_MEMORY_BYTES = 300 * 1024 * 1024
 
   def apply(conf: SparkConf, numCores: Int): UnifiedMemoryManager = {

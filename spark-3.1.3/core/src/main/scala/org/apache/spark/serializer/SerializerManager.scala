@@ -64,12 +64,16 @@ private[spark] class SerializerManager(
   }
 
   // Whether to compress broadcast variables that are stored
+  // 是否压缩存储的广播变量
   private[this] val compressBroadcast = conf.get(config.BROADCAST_COMPRESS)
   // Whether to compress shuffle output that are stored
+  // 是否压缩存储的shuffle输出
   private[this] val compressShuffle = conf.get(config.SHUFFLE_COMPRESS)
   // Whether to compress RDD partitions that are stored serialized
+  // 是否压缩存储序列化的RDD分区
   private[this] val compressRdds = conf.get(config.RDD_COMPRESS)
   // Whether to compress shuffle output temporarily spilled to disk
+  // 是否压缩临时写入磁盘的shuffle输出
   private[this] val compressShuffleSpill = conf.get(config.SHUFFLE_SPILL_COMPRESS)
 
   /* The compression codec to use. Note that the "lazy" val is necessary because we want to delay

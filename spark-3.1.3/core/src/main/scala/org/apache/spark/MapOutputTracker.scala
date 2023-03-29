@@ -285,6 +285,11 @@ private[spark] class MapOutputTrackerMasterEndpoint(
 
   logDebug("init") // force eager creation of logger
 
+  /**
+   * Process the GetMapOutputMessage and reply back to sender.
+   * @param context
+   * @return
+   */
   override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
     case GetMapOutputStatuses(shuffleId: Int) =>
       val hostPort = context.senderAddress.hostPort
@@ -320,6 +325,7 @@ private[spark] abstract class MapOutputTracker(conf: SparkConf) extends Logging 
   protected val epochLock = new AnyRef
 
   /**
+   * askTracker通过RPC发送消息。根据传入的shuffleId不断地去获取信息
    * Send a message to the trackerEndpoint and get its result within a default timeout, or
    * throw a SparkException if this fails.
    */
@@ -809,6 +815,18 @@ private[spark] class MapOutputTrackerWorker(conf: SparkConf) extends MapOutputTr
    */
   private val fetchingLock = new KeyLock[Int]
 
+  /**
+   * getMapSizesByExecutorId是我们的Executor根据URI获取元数据，然后返回Seq[(Block-ManagerId, Seq[(BlockId, Long)])]。getStatuses的代码如下：
+   * @param shuffleId
+   * @param startMapIndex
+   * @param endMapIndex
+   * @param startPartition
+   * @param endPartition
+   *  @return A sequence of 2-item tuples, where the first item in the tuple is a BlockManagerId,
+   *         and the second item is a sequence of (shuffle block id, shuffle block size, map index)
+   *         tuples describing the shuffle blocks that are stored at that block manager.
+   *         Note that zero-sized blocks are excluded in the result.
+   */
   override def getMapSizesByExecutorId(
       shuffleId: Int,
       startMapIndex: Int,
@@ -838,14 +856,22 @@ private[spark] class MapOutputTrackerWorker(conf: SparkConf) extends MapOutputTr
    * (It would be nice to remove this restriction in the future.)
    */
   private def getStatuses(shuffleId: Int, conf: SparkConf): Array[MapStatus] = {
+    // 首先查看本地是否有数据，如果本地有数据，就返回；如果本地没有数据，则从远程节点获得数据。
     val statuses = mapStatuses.get(shuffleId).orNull
     if (statuses == null) {
       logInfo("Don't have map outputs for shuffle " + shuffleId + ", fetching them")
       val startTimeNs = System.nanoTime()
       fetchingLock.withLock(shuffleId) {
+        // 因为在等待的过程中，同一个Executor的其他任务把数据拉到了本地，那就不用从远程拉数据，
+        // 通过mapStatuses.get即可获取本地数据。如果fetchedStatuses为空，
+        // 还是没有获取到数据，就需从远程获取，
+        // 将要获取的数据shuffleId加入到fetching。
         var fetchedStatuses = mapStatuses.get(shuffleId).orNull
         if (fetchedStatuses == null) {
           logInfo("Doing the fetch; tracker endpoint = " + trackerEndpoint)
+          // 真正从远程获取数据，fetchedBytes获得数据后进行反序列化得到fetchedStatuses，这里的数据是元数据。
+          // 然后将数据加入到mapStatuses里面。如果fetchedStatuses不为空，则直接获取结果。如果fetchedStatuses还为空，
+          // 则提示报错!!!
           val fetchedBytes = askTracker[Array[Byte]](GetMapOutputStatuses(shuffleId))
           try {
             fetchedStatuses = MapOutputTracker.deserializeMapStatuses(fetchedBytes, conf)
@@ -989,6 +1015,7 @@ private[spark] object MapOutputTracker extends Logging {
    *
    * If any of the statuses is null (indicating a missing location due to a failed mapper),
    * throws a FetchFailedException.
+   * 把返回的数据按照一定的格式，获得status.location具体的位置信息
    *
    * @param shuffleId Identifier for the shuffle
    * @param startPartition Start of map output partition ID range (included in range)

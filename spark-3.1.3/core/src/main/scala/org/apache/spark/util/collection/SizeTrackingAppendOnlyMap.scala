@@ -30,6 +30,7 @@ private[spark] class SizeTrackingAppendOnlyMap[K, V]
 
   override def changeValue(key: K, updateFunc: (Boolean, V) => V): V = {
     val newValue = super.changeValue(key, updateFunc)
+    // 每次更新后调用回调，在其中会调用takeSample方法，取一个新样本的当前集合的大小，其中采用estimate方法进行估值
     super.afterUpdate()
     newValue
   }

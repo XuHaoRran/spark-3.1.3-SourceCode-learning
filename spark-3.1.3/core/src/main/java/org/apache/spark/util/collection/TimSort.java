@@ -53,6 +53,13 @@ import java.util.Comparator;
  *
  * We allow key reuse to prevent creating many key objects -- see SortDataFormat.
  *
+ * TimSort优化MergeSort排序，把它变成稳定的、适应的、迭代的排序，timSort基于分布式的排序，效率有很大的提升。
+ * MergeSort排序默认长度是1，归并的时候自动生成归并元素；timSort是连续递增的，
+ * 将其中的一块数据run进行反转，run有自己具体的实现算法，run可以认为是一块固定大小的数据，
+ * 如果插入一段数据，数据的长度小于run的长度，timSort就会采用二分的insertSort，
+ * 进行一些局部的优化。MergeSort排序归并是固定的，而timSort是随机的，会有判断条件。
+ * timSort在很多地方都有使用，如安卓等。
+ *
  * @see org.apache.spark.util.collection.SortDataFormat
  * @see org.apache.spark.util.collection.Sorter
  */
@@ -118,13 +125,16 @@ class TimSort<K, Buffer> {
    */
   public void sort(Buffer a, int lo, int hi, Comparator<? super K> c) {
     assert c != null;
-
+    // 是未排序的数组的长度，是从数组的角度考虑的，不过timSort是分布式的
     int nRemaining  = hi - lo;
     if (nRemaining < 2)
+      // 大小为0和1的数组总是排序的
       return;  // Arrays of size 0 and 1 are always sorted
 
     // If array is small, do a "mini-TimSort" with no merges
+    // 如果数组很小，使用二分插入排序
     if (nRemaining < MIN_MERGE) {
+      // countRunAndMakeAscending计算得到递增数据的长度，然后使用binarySort二分排序法，这个是基本的排序法。
       int initRunLen = countRunAndMakeAscending(a, lo, hi, c);
       binarySort(a, lo, hi, lo + initRunLen, c);
       return;
@@ -134,14 +144,17 @@ class TimSort<K, Buffer> {
      * March over the array once, left to right, finding natural runs,
      * extending short natural runs to minRun elements, and merging runs
      * to maintain stack invariant.
+     * 从左到右遍历数组，找到自然的run，扩展短的run到minRun长度，合并run来维持栈的不变性
      */
     SortState sortState = new SortState(a, c, hi - lo);
     int minRun = minRunLength(nRemaining);
     do {
       // Identify next run
+      // 找到下一个run
       int runLen = countRunAndMakeAscending(a, lo, hi, c);
 
       // If run is short, extend to min(minRun, nRemaining)
+      // 如果run很短，扩展到minRun和nRemaining中的最小值
       if (runLen < minRun) {
         int force = nRemaining <= minRun ? nRemaining : minRun;
         binarySort(a, lo, lo + force, lo + runLen, c);
@@ -149,15 +162,18 @@ class TimSort<K, Buffer> {
       }
 
       // Push run onto pending-run stack, and maybe merge
+      // 将run压入栈，可能合并
       sortState.pushRun(lo, runLen);
       sortState.mergeCollapse();
 
       // Advance to find next run
+      // 找到下一个run
       lo += runLen;
       nRemaining -= runLen;
     } while (nRemaining != 0);
 
     // Merge all remaining runs to complete sort
+    // 合并所有剩余的run来完成排序
     assert lo == hi;
     sortState.mergeForceCollapse();
     assert sortState.stackSize == 1;

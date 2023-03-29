@@ -44,6 +44,12 @@ public class HeapMemoryAllocator implements MemoryAllocator {
     return size >= POOLING_THRESHOLD_BYTES;
   }
 
+  /**
+   * 进入HeapMemoryAllocator：查看里面的allocate方法，先查询缓冲池是否为空，如果不为空，则获取MemoryBlock，然后使用memory.fill进行分配。
+   * @param size
+   * @return
+   * @throws OutOfMemoryError
+   */
   @Override
   public MemoryBlock allocate(long size) throws OutOfMemoryError {
     int numWords = (int) ((size + 7) / 8);

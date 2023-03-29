@@ -182,6 +182,9 @@ abstract class RDD[T: ClassTag](
   /**
    * Mark this RDD for persisting using the specified level.
    *
+   * 设置这个RDD的存储级别，第一次计算以后持久化值，如果RDD没有一个存储级别，将分配一个新的存储界别
+   * 局部检查点是一个例外
+   *
    * @param newLevel the target storage level
    * @param allowOverride whether to override any existing level with the new one
    */
@@ -193,6 +196,7 @@ abstract class RDD[T: ClassTag](
     }
     // If this is the first time this RDD is marked for persisting, register it
     // with the SparkContext for cleanups and accounting. Do this only once.
+    // 之前称为localCheckpoint的RDD，这里会重新设置存储级别。
     if (storageLevel == StorageLevel.NONE) {
       sc.cleaner.foreach(_.registerRDDForCleanup(this))
       sc.persistRDD(this)

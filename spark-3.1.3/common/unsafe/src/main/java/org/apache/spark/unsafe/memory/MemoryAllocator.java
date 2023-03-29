@@ -33,6 +33,7 @@ public interface MemoryAllocator {
   /**
    * Allocates a contiguous block of memory. Note that the allocated memory is not guaranteed
    * to be zeroed out (call `fill(0)` on the result if this is necessary).
+   * 分配一个连续的内存块，注意，分配的内存没有保证被清零（如果有必要，调用fill(0)方法填充）
    */
   MemoryBlock allocate(long size) throws OutOfMemoryError;
 

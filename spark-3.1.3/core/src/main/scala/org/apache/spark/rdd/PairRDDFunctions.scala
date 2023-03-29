@@ -512,6 +512,8 @@ class PairRDDFunctions[K, V](self: RDD[(K, V)])
     // groupByKey shouldn't use map side combine because map side combine does not
     // reduce the amount of data shuffled and requires all map side data be inserted
     // into a hash table, leading to more objects in the old gen.
+    // groupByKey不适用Mapper端聚合，因为Mapper端聚合不汇聚Shuffled的数据，
+    // 要求所有的Mapper端的数据插入到哈希表中，导致生成更多对象
     val createCombiner = (v: V) => CompactBuffer(v)
     val mergeValue = (buf: CompactBuffer[V], v: V) => buf += v
     val mergeCombiners = (c1: CompactBuffer[V], c2: CompactBuffer[V]) => c1 ++= c2

@@ -183,24 +183,33 @@ private[spark] class ExternalSorter[K, V, C](
   def insertAll(records: Iterator[Product2[K, V]]): Unit = {
     // TODO: stop combining if we find that the reduction factor isn't high
     val shouldCombine = aggregator.isDefined
-
+    // shouldCombine判断是否需要聚合。一个基本的问题：
+    // 怎么知道是否需要聚合？算子和算子的配置参数决定了是否需要聚合。如果为true，
+    // 使用AppendOnlyMap首先在内存对值进行组合。
     if (shouldCombine) {
       // Combine values in-memory first using our AppendOnlyMap
+      // 使用AppendOnlyMap，首先在内存中组合值
       val mergeValue = aggregator.get.mergeValue
       val createCombiner = aggregator.get.createCombiner
       var kv: Product2[K, V] = null
+      // update是偏函数。如果有值，就将新的value和旧的value进行合并；如果hadValue是false，则新建combiner，
+      // 相当于没有旧的值。从Hadoop的角度讲，Merge相当于hadoop的combiner，相同Key的Value进行聚合
       val update = (hadValue: Boolean, oldValue: C) => {
         if (hadValue) mergeValue(oldValue, kv._2) else createCombiner(kv._2)
       }
       while (records.hasNext) {
         addElementsRead()
         kv = records.next()
+        // 调用了偏函数update，又更新了Value值
+        // map是AppendOnlyMap，是一个HashMap
         map.changeValue((getPartition(kv._1), kv._1), update)
         // 是否需要Splii
         maybeSpillCollection(usingMap = true)
       }
     } else {
+      // 如果没有聚合，就直接在Buffer数据结构中插入一条记录
       // Stick values into our buffer
+      // 将值插入缓冲区
       while (records.hasNext) {
         addElementsRead()
         val kv = records.next()
@@ -270,9 +279,13 @@ private[spark] class ExternalSorter[K, V, C](
    */
   private[this] def spillMemoryIteratorToDisk(inMemoryIterator: WritablePartitionedIterator)
       : SpilledFile = {
+
+    // 生长城临时文件的block和临时文件本身
     // Because these files may be read during shuffle, their compression must be controlled by
     // spark.shuffle.compress instead of spark.shuffle.spill.compress, so we need to use
     // createTempShuffleBlock here; see SPARK-3426 for more context.
+    // 因为这些文件可能在shuffle期间被读取，因此它们的压缩必须由spark.shuffle.compress控制
+    // 而不是spark.shuffle.spill.compress，因此我们需要在这里使用createTempShuffleBlock；
     val (blockId, file) = diskBlockManager.createTempShuffleBlock()
 
     // These variables are reset after each flush
@@ -282,13 +295,16 @@ private[spark] class ExternalSorter[K, V, C](
       blockManager.getDiskWriter(blockId, file, serInstance, fileBufferSize, spillMetrics)
 
     // List of batch sizes (bytes) in the order they are written to disk
+    // 按写入磁盘的顺序列出批量大小（字节）
     val batchSizes = new ArrayBuffer[Long]
 
     // How many elements we have in each partition
+    // 记录分区有多少元素
     val elementsPerPartition = new Array[Long](numPartitions)
 
     // Flush the disk writer's contents to disk, and update relevant variables.
     // The writer is committed at the end of this process.
+    // flush：将数据写入磁盘。一批一批地写入数据，达到序列化大小的时候进行flush操作
     def flush(): Unit = {
       val segment = writer.commitAndGet()
       batchSizes += segment.length
@@ -653,16 +669,20 @@ private[spark] class ExternalSorter[K, V, C](
     if (spills.isEmpty) {
       // Special case: if we have only in-memory data, we don't need to merge streams, and perhaps
       // we don't even need to sort by anything other than partition ID
+      // 特殊情况：如果我们只有内存数据，我们不需要合并流，也许我们甚至不需要按分区ID以外的任何东西进行排序
       if (ordering.isEmpty) {
         // The user hasn't requested sorted keys, so only sort by partition ID, not key
+        // 用户没有请求排序的键，因此只按分区ID排序，而不按键排序
         groupByPartition(destructiveIterator(collection.partitionedDestructiveSortedIterator(None)))
       } else {
         // We do need to sort by both partition ID and key
+        // 我们确实需要按分区ID和键进行排序
         groupByPartition(destructiveIterator(
           collection.partitionedDestructiveSortedIterator(Some(keyComparator))))
       }
     } else {
       // Merge spilled and in-memory data
+      // 合并溢出和内存数据
       merge(spills.toSeq, destructiveIterator(
         collection.partitionedDestructiveSortedIterator(comparator)))
     }
@@ -687,13 +707,16 @@ private[spark] class ExternalSorter[K, V, C](
     ): Array[Long] = {
 
     // Track location of each range in the output file
+    // 跟踪输出文件中每个范围的位置
     val lengths = new Array[Long](numPartitions)
     val writer = blockManager.getDiskWriter(blockId, outputFile, serInstance, fileBufferSize,
       context.taskMetrics().shuffleWriteMetrics)
-
+    // 判断spills.isEmpty，如仅在内存中有数据的处理方法。如果数据在磁盘中，则必须执行合并排序；得到一个迭代器的分区和直接写入数据。
     if (spills.isEmpty) {
       // Case where we only have in-memory data
+      // 在只有内存中数据的情况下
       val collection = if (aggregator.isDefined) map else buffer
+      // 生成了一个迭代器Iterator，这个迭代器非常重要，因为排序的时候需要迭代器
       val it = collection.destructiveSortedWritablePartitionedIterator(comparator)
       while (it.hasNext) {
         val partitionId = it.nextPartition()
@@ -705,6 +728,7 @@ private[spark] class ExternalSorter[K, V, C](
       }
     } else {
       // We must perform merge-sort; get an iterator by partition and write everything directly.
+      // 我们必须执行合并排序，通过分区获得一个迭代器，并直接写入所有内容
       for ((id, elements) <- this.partitionedIterator) {
         if (elements.hasNext) {
           for (elem <- elements) {
@@ -811,7 +835,7 @@ private[spark] class ExternalSorter[K, V, C](
   /**
    * Given a stream of ((partition, key), combiner) pairs *assumed to be sorted by partition ID*,
    * group together the pairs for each partition into a sub-iterator.
-   *
+   * roupByPartition根据partition进行排序后，还根据partition进行聚合。IteratorForPartition是单个partition的迭代器。
    * @param data an iterator of elements, assumed to already be sorted by partition ID
    */
   private def groupByPartition(data: Iterator[((Int, K), C)])
@@ -822,6 +846,7 @@ private[spark] class ExternalSorter[K, V, C](
   }
 
   /**
+   * IteratorForPartition仅从底层缓冲区读取给定分区ID的元素的迭代器流，假设这个分区是下一个被读取，更容易返回来自内存集合的分区迭代器。
    * An iterator that reads only the elements for a given partition ID from an underlying buffered
    * stream, assuming this partition is the next one to be read. Used to make it easier to return
    * partitioned iterators from our in-memory collection.
@@ -851,6 +876,7 @@ private[spark] class ExternalSorter[K, V, C](
 
     private var hasSpilled: Boolean = false
 
+    // ExternalSorter中的spill方法，生成spillFile文件
     def spill(): Boolean = SPILL_LOCK.synchronized {
       if (hasSpilled) {
         false
@@ -869,6 +895,7 @@ private[spark] class ExternalSorter[K, V, C](
         }
         logInfo(s"Task ${TaskContext.get().taskAttemptId} force spilling in-memory map to disk " +
           s"and it will release ${org.apache.spark.util.Utils.bytesToString(getUsed())} memory")
+        // 这里生成spillFile文件
         val spillFile = spillMemoryIteratorToDisk(inMemoryIterator)
         forceSpillFiles += spillFile
         val spillReader = new SpillReader(spillFile)

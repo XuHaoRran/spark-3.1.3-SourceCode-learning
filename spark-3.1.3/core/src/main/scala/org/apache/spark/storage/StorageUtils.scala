@@ -248,6 +248,8 @@ private[spark] object StorageUtils extends Logging {
       // for testing, we set "spark.shuffle.service.port" to 0 in the yarn config, so yarn finds
       // an open port.  But we still need to tell our spark apps the right port to use.  So
       // only if the yarn config has the port set to 0, we prefer the value in the spark config
+      // 为了测试，我们将“spark.shuffle.service.port”设置为0，以便yarn找到一个打开的端口。但是我们仍然需要告诉我们的spark应用程序使用正确的端口。
+      // 所以，只有当yarn配置将端口设置为0时，我们才会首选spark配置中的值
       conf.get(config.SHUFFLE_SERVICE_PORT.key).toInt
     } else {
       tmpPort

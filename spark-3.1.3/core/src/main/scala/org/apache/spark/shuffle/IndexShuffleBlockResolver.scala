@@ -272,6 +272,11 @@ private[spark] class IndexShuffleBlockResolver(
    * It will commit the data and index file as an atomic operation, use the existing ones, or
    * replace them with new ones.
    *
+   *照sort Shuffle的方式分成两部分：一部分为创建索引的部分；另外一部分是我们创建了索引文件以后，
+   * 在写数据的时候，把每个Partition数据文件中的起始和结束位置写入到我们创建的索引文件中，
+   * 这样我们的Reducer获取位置的时候，首先根据索引文件确定属于这个Partition的文件起始和结束位置，
+   * 抓到属于我们的数据
+   *
    * Note: the `lengths` will be updated to match the existing index file if use the existing ones.
    */
   def writeIndexFileAndCommit(
@@ -285,11 +290,13 @@ private[spark] class IndexShuffleBlockResolver(
       val dataFile = getDataFile(shuffleId, mapId)
       // There is only one IndexShuffleBlockResolver per executor, this synchronization make sure
       // the following check and rename are atomic.
+      // 每次执行IndexShuffleBlockResolver，同步确认下面的检查和重命名是原子的
       this.synchronized {
         val existingLengths = checkIndexAndDataFile(indexFile, dataFile, lengths.length)
         if (existingLengths != null) {
           // Another attempt for the same task has already written our map outputs successfully,
           // so just use the existing partition lengths and delete our temporary map outputs.
+          // 同一任务的另一次尝试已经成功地写入map输出，秩序使用现有地分区长度，并删除临时map输出
           System.arraycopy(existingLengths, 0, lengths, 0, lengths.length)
           if (dataTmp != null && dataTmp.exists()) {
             dataTmp.delete()
@@ -297,6 +304,7 @@ private[spark] class IndexShuffleBlockResolver(
         } else {
           // This is the first successful attempt in writing the map outputs for this task,
           // so override any existing index and data files with the ones we wrote.
+          // 这是为这个任务写入map输出地首次成功尝试，将覆盖我们写的所有索引和数据文件
           val out = new DataOutputStream(new BufferedOutputStream(new FileOutputStream(indexTmp)))
           Utils.tryWithSafeFinally {
             // We take in lengths of each block, need to convert it to offsets.
@@ -345,6 +353,8 @@ private[spark] class IndexShuffleBlockResolver(
     }
     // The block is actually going to be a range of a single map output file for this map, so
     // find out the consolidated file, then the offset within that from our index
+    // 这个块实际上是一个单个map输出文件的一个范围，所以找到合并的文件，然后从我们的索引中找到偏移量
+
     val indexFile = getIndexFile(shuffleId, mapId, dirs)
 
     // SPARK-22982: if this FileInputStream's position is seeked forward by another piece of code

@@ -117,6 +117,7 @@ final class ShuffleExternalSorter extends MemoryConsumer {
   private long pageCursor = -1;
 
   ShuffleExternalSorter(
+      // 传入的是memoryManager
       TaskMemoryManager memoryManager,
       BlockManager blockManager,
       TaskContext taskContext,
@@ -132,6 +133,7 @@ final class ShuffleExternalSorter extends MemoryConsumer {
     this.taskContext = taskContext;
     this.numPartitions = numPartitions;
     // Use getSizeAsKb (not bytes) to maintain backwards compatibility if no units are provided
+    // 使用getSizeAsKb（而不是字节）来保持向后兼容，如果没有提供单位
     this.fileBufferSizeBytes =
         (int) (long) conf.get(package$.MODULE$.SHUFFLE_FILE_BUFFER_SIZE()) * 1024;
     this.numElementsForSpillThreshold =
@@ -140,6 +142,7 @@ final class ShuffleExternalSorter extends MemoryConsumer {
     this.inMemSorter = new ShuffleInMemorySorter(
       this, initialSize, (boolean) conf.get(package$.MODULE$.SHUFFLE_SORT_USE_RADIXSORT()));
     this.peakMemoryUsedBytes = getMemoryUsage();
+    // diskWriteBufferSize是将已排序的记录写入磁盘文件时要使用的缓冲区大小
     this.diskWriteBufferSize =
         (int) (long) conf.get(package$.MODULE$.SHUFFLE_DISK_WRITE_BUFFER_SIZE());
   }

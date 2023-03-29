@@ -50,6 +50,22 @@ private[spark] class SortShuffleWriter[K, V, C](
   /** Write a bunch of records to this task's output
    *  然后在计算具体的Partition之后，通过shuffleManager获得的shuffleWriter把当前Task计算的结果根据具体的shuffleManager实现写入到
    *  具体的文件中，操作完成后会把MapStatus发送给Driver端的DAGScheduler的MapOutputTracker。
+   *
+   *  1.在insertAll之前有判断，在Mapper端是否要进行聚合，如果没有进行聚合，
+   *  将按照Partition写入到不同的文件中，最后按照Partition顺序合并到同样一个文件中。
+   *  在这种情况下，适合Partition的数据比较少的情况；那我们将很多的bucket合并到一个文件，
+   *  减少了Mapper端输出文件的数量，减少了磁盘I/O，提升了性能。
+   *
+   *  2.除了既不想排序，又不想聚合的情况，也可能在Mapper端不进行聚合，但可能进行排序，
+   *  这在缓存区中根据PartitionID进行排序，也可能根据Key进行排序。最后需要根据PartitionID进行排序，
+   *  比较适合Partition比较多的情况。如果内存不够用，就会溢写到磁盘中
+   *  。
+   *  。
+   *
+   *  3.第三种情况，既需要聚合，也需要排序，这时肯定先进行聚合，后进行排序。
+   *  实现时，根据Key值进行聚合，在缓存中根据PartitionID进行排序，也可能根据Key进行排序，
+   *  默认情况不需要根据Key进行排序。最后需要根据PartitionID进行合并，如果内存不够用，
+   *  就会溢写到磁盘中。
    * */
   override def write(records: Iterator[Product2[K, V]]): Unit = {
     // 当需要在Map端进行聚合操作时，此时将会指定聚合器(Aggregator)
@@ -67,6 +83,7 @@ private[spark] class SortShuffleWriter[K, V, C](
         context, aggregator = None, Some(dep.partitioner), ordering = None, dep.serializer)
     }
     // 将写入的记录的记录集全部放入外部排序器
+    // 基于sorter具体排序的实现方式，将数据写入缓冲区中。如果records数据特别多，可能会导致内存溢出，Spark现在的实现方式是Spill溢出写到磁盘中
     sorter.insertAll(records)
 
     // Don't bother including the time to open the merged output file in the shuffle write time,
@@ -79,6 +96,8 @@ private[spark] class SortShuffleWriter[K, V, C](
     sorter.writePartitionedMapOutput(dep.shuffleId, mapId, mapOutputWriter)
     // 将分区数据写入文件，返回各个分区对应的数据量
     val partitionLengths = mapOutputWriter.commitAllPartitions().getPartitionLengths
+    // map在最后地时候我们将元数据写入到MapStatus，MapStatus返回给Driver，
+    // 这里是元数据信息，Driver根据这个信息告诉下一个Stage，你的上一个Mapper的数据写在什么地方。下一个Stage就根据MapStatus得到上一个Stage的处理结果。
     mapStatus = MapStatus(blockManager.shuffleServerId, partitionLengths, mapId)
   }
 
@@ -109,6 +128,7 @@ private[spark] class SortShuffleWriter[K, V, C](
 private[spark] object SortShuffleWriter {
   def shouldBypassMergeSort(conf: SparkConf, dep: ShuffleDependency[_, _, _]): Boolean = {
     // We cannot bypass sorting if we need to do map-side aggregation.
+    // 如果需要在Map端进行聚合操作，那么就不能跳过排序
     if (dep.mapSideCombine) {
       false
     } else {

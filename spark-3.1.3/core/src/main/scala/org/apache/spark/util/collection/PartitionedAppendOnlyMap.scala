@@ -24,6 +24,10 @@ import org.apache.spark.util.collection.WritablePartitionedPairCollection._
 /**
  * Implementation of WritablePartitionedPairCollection that wraps a map in which the keys are tuples
  * of (partition ID, K)
+ * 在Mapper端进行combine：PartitionedAppendOnlyMap是map类型的数据结构，
+ * map是key-value，在本地进行聚合，在本地Key值不变，Value不断更新；Partitioned AppendOnlyMap底层还是一个数组，
+ * 基于数组实现map的原因是更节省空间，效率更高。那么，直接基于数组怎么实现map：把数组的偶数标记设置为map的Key值，
+ * 把奇数标记设置为map的value值。
  */
 private[spark] class PartitionedAppendOnlyMap[K, V]
   extends SizeTrackingAppendOnlyMap[(Int, K), V] with WritablePartitionedPairCollection[K, V] {

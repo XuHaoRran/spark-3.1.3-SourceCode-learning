@@ -27,6 +27,7 @@ import org.apache.spark.util.collection.WritablePartitionedPairCollection._
  * of its estimated size in bytes.
  *
  * The buffer can support up to 1073741819 elements.
+ * 在Mapper端没有combine：使用PartitionedPairBuffer
  */
 private[spark] class PartitionedPairBuffer[K, V](initialCapacity: Int = 64)
   extends WritablePartitionedPairCollection[K, V] with SizeTracker
@@ -76,6 +77,7 @@ private[spark] class PartitionedPairBuffer[K, V](initialCapacity: Int = 64)
   override def partitionedDestructiveSortedIterator(keyComparator: Option[Comparator[K]])
     : Iterator[((Int, K), V)] = {
     val comparator = keyComparator.map(partitionKeyComparator).getOrElse(partitionComparator)
+    // 这里调用new函数创建一个Sorter。Sorter内部使用timSort排序
     new Sorter(new KVArraySortDataFormat[(Int, K), AnyRef]).sort(data, 0, curSize, comparator)
     iterator
   }

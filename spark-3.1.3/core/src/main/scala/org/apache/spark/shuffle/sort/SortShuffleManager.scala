@@ -188,6 +188,7 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
         new UnsafeShuffleWriter(
           env.blockManager,
           // 构建了一个TaskMemoryManager实例并传入UnsafeShuffleWriter，TaskMemory与Task是一对一关系，负责管理分配给Task的内存
+          // taskcontext上下文是Task启动过程中给内存分配内存管理器！Task被序列化到Executor中，之后反序列化运行，构建MemoryManager的一个实例。
           context.taskMemoryManager(),
           unsafeShuffleHandle,
           mapId,

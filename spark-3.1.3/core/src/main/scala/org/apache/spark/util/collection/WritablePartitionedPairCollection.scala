@@ -29,11 +29,13 @@ import java.util.Comparator
  */
 private[spark] trait WritablePartitionedPairCollection[K, V] {
   /**
+   * 将分区中的key-value键值对插入到集合中
    * Insert a key-value pair with a partition into the collection
    */
   def insert(partition: Int, key: K, value: V): Unit
 
   /**
+   * 按分区ID顺序遍历数据，然后按给定比较器进行迭代，这可能破坏底层集合
    * Iterate through the data in order of partition ID and then the given comparator. This may
    * destroy the underlying collection.
    */
@@ -44,13 +46,18 @@ private[spark] trait WritablePartitionedPairCollection[K, V] {
    * Iterate through the data and write out the elements instead of returning them. Records are
    * returned in order of their partition ID and then the given comparator.
    * This may destroy the underlying collection.
+   * 返回一个迭代器，该迭代器将数据写入到磁盘中，而不是返回给用户
    */
   def destructiveSortedWritablePartitionedIterator(keyComparator: Option[Comparator[K]])
     : WritablePartitionedIterator = {
+    // 生成迭代器本身。按照分区ID和给定比较器迭代数据，这可能破坏基础集合。
     val it = partitionedDestructiveSortedIterator(keyComparator)
+    //
     new WritablePartitionedIterator {
       private[this] var cur = if (it.hasNext) it.next() else null
-
+      // 构建一个对象WritablePartitionedIterator，迭代器写元素到一个DiskBlockObjectWriter，而不是返回元素。
+      // 每个元素有关联分区。WritablePartitionedIterator从设计模式讲，
+      // 相当于一个代理类，代理的是迭代器的功能。
       def writeNext(writer: PairsWriter): Unit = {
         writer.write(cur._1._2, cur._2)
         cur = if (it.hasNext) it.next() else null

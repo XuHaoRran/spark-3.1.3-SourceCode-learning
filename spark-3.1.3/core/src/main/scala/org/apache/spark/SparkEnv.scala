@@ -335,6 +335,11 @@ object SparkEnv extends Logging {
     val shortShuffleMgrNames = Map(
       "sort" -> classOf[org.apache.spark.shuffle.sort.SortShuffleManager].getName,
       "tungsten-sort" -> classOf[org.apache.spark.shuffle.sort.SortShuffleManager].getName)
+    // Spark 2.0版本默认是SortShuffleManager。Tungsten-Sort与Sort类似，
+    // SortShuffleManager默认对数据进行排序，因此如果用户的业务逻辑中需要该排序机制，
+    // 则使用默认的SortShuffle-Manager；
+    // 如果需要使用Tungsten-Sort，则把Spark.Shuffle.manager设置成Tungsten-Sort
+    // 。
     val shuffleMgrName = conf.get(config.SHUFFLE_MANAGER)
     val shuffleMgrClass =
       shortShuffleMgrNames.getOrElse(shuffleMgrName.toLowerCase(Locale.ROOT), shuffleMgrName)
