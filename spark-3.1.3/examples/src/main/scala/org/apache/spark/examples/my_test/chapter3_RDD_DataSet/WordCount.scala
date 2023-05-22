@@ -21,7 +21,7 @@ object WordCount {
       */
     val conf = new SparkConf() //创建SparkConf对象
     conf.setAppName("Wow,My First Spark App!") //设置应用程序的名称，在程序运行的监控界面可以看到名称
-    conf.setMaster("local") //此时，程序在本地运行，不需要安装Spark集群
+    conf.setMaster("local[*]") //此时，程序在本地运行，不需要安装Spark集群
     /**
       * 第2步：创建SparkContext对象
       * SparkContext是Spark程序所有功能的唯一入口，无论是采用Scala、Java、Python、R等都必须有一个SparkContext

@@ -2540,6 +2540,7 @@ private[spark] class DAGScheduler(
       return Nil
     }
     // If the partition is cached, return the cache locations
+    // 如果partition被缓存（partition被缓存是指数据已经在DAGScheduler中），
     val cached = getCacheLocs(rdd)(partition)
     if (cached.nonEmpty) {
       return cached

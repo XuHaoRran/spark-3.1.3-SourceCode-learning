@@ -107,6 +107,7 @@
     <module>external/kafka-0-10-sql</module>
     <module>sql/hive-thriftserver</module>
     <module>external/avro</module>
+    <module>gmall-flume-interceptor</module>
     <!-- See additional modules enabled by profiles below -->
   </modules>
 

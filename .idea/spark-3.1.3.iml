@@ -6,6 +6,6 @@
     <content url="file://$MODULE_DIR$" />
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
-    <orderEntry type="library" name="scala-sdk-2.12.11" level="application" />
+    <orderEntry type="library" name="scala-sdk-2.12.11" level="project" />
   </component>
 </module>

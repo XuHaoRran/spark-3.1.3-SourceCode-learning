@@ -252,6 +252,7 @@ private[spark] class ExternalSorter[K, V, C](
    */
   override protected[this] def spill(collection: WritablePartitionedPairCollection[K, C]): Unit = {
     val inMemoryIterator = collection.destructiveSortedWritablePartitionedIterator(comparator)
+    // 生成一个溢写文件
     val spillFile = spillMemoryIteratorToDisk(inMemoryIterator)
     spills += spillFile
   }

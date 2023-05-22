@@ -244,6 +244,10 @@ private[spark] class TaskSchedulerImpl(
     waitBackendReady()
   }
 
+  /**
+   * 提交要运行的任务序列
+   * @param taskSet
+   */
   override def submitTasks(taskSet: TaskSet): Unit = {
     val tasks = taskSet.tasks
     logInfo("Adding task set " + taskSet.id + " with " + tasks.length + " tasks "
@@ -329,6 +333,7 @@ private[spark] class TaskSchedulerImpl(
     new TaskSetManager(this, taskSet, maxTaskFailures, healthTrackerOpt, clock)
   }
 
+  // 取消Stage
   override def cancelTasks(stageId: Int, interruptThread: Boolean): Unit = synchronized {
     logInfo("Cancelling stage " + stageId)
     // Kill all running tasks for the stage.
@@ -342,6 +347,13 @@ private[spark] class TaskSchedulerImpl(
     }
   }
 
+  /**
+   * 杀掉尝试任务
+   * @param taskId
+   * @param interruptThread
+   * @param reason
+   *  @return Whether the task was successfully killed.
+   */
   override def killTaskAttempt(
       taskId: Long,
       interruptThread: Boolean,
@@ -540,6 +552,8 @@ private[spark] class TaskSchedulerImpl(
    * Called by cluster manager to offer resources on workers. We respond by asking our active task
    * sets for tasks in order of priority. We fill each node with tasks in a round-robin manner so
    * that tasks are balanced across the cluster.
+   * 由集群管理器调用，以提供工作人员的资源。我们通过按优先级要求我们的活动任务集来响应任务。我们以轮询的方式填充每个节点的任务，
+   * 以便在集群中平衡任务。
    *
    * <p>标记每一个活着的slave，记录它的主机名，并跟踪是否增加了新的Executor。感知集群动态资源的状况。
    *
@@ -564,7 +578,9 @@ private[spark] class TaskSchedulerImpl(
     // 标记每一个slave节点活跃状态，记录主机名
     // 如是新的executor 节点增加，则进行跟踪
     var newExecAvail = false
+    // offers是集群有哪些可用的资源，循环遍历offers
     for (o <- offers) {
+      // 如果hostToExecutors不包含当前的host，就将Executor加进去
       if (!hostToExecutors.contains(o.host)) {
         hostToExecutors(o.host) = new HashSet[String]()
       }
@@ -609,6 +625,9 @@ private[spark] class TaskSchedulerImpl(
     // 并行运行多少Task，和RDD的分区个数是两个概念：这里不是决定Task的个数，RDD的分区数在创建RDD时就已经决定了。
     // 这里，具体任务调度是指Task分配在哪些机器上，每台机器上分配多少Task，一次能分配多少Task。
 
+    // tasks将获得洗牌后的shuffledOffers通过map转换，对每个worker用了ArrayBuffer[TaskDescription]，
+    // 每个Executor可以放几个[TaskDescription]，就可以运行多少个任务。即多少个Cores，
+    // 就可以分配多少任务。ArrayBuffer是一个一维数组，数组的长度根据当前机器的CPU个数决定。
     val tasks = shuffledOffers.map(o => new ArrayBuffer[TaskDescription](o.cores / CPUS_PER_TASK))
     val availableResources = shuffledOffers.map(_.resources).toArray
     val availableCpus = shuffledOffers.map(o => o.cores).toArray
@@ -905,6 +924,8 @@ private[spark] class TaskSchedulerImpl(
    * Update metrics for in-progress tasks and executor metrics, and let the master know that the
    * BlockManager is still alive. Return true if the driver knows about the given block manager.
    * Otherwise, return false, indicating that the block manager should re-register.
+   * 更新正运行任务，让master指导BlockManager仍活着，如果driver指导给定的块管理器，则返回true，否则返回false，
+   * 指示块管理器应重新注册
    */
   override def executorHeartbeatReceived(
       execId: String,

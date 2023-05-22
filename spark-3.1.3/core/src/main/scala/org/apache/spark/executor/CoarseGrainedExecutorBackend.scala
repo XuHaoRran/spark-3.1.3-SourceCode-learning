@@ -413,6 +413,7 @@ private[spark] object CoarseGrainedExecutorBackend extends Logging {
         arguments.bindAddress, arguments.hostname, arguments.cores, arguments.userClassPath.toSeq,
         env, arguments.resourcesFileOpt, resourceProfile)
     }
+    // 调用run方法
     run(parseArguments(args, this.getClass.getCanonicalName.stripSuffix("$")), createFn)
     System.exit(0)
   }

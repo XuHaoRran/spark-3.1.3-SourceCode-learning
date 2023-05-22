@@ -133,6 +133,7 @@ private[spark] object SortShuffleWriter {
       false
     } else {
       val bypassMergeThreshold: Int = conf.get(config.SHUFFLE_SORT_BYPASS_MERGE_THRESHOLD)
+      // 如果并行度小于bypassMergeThreshold的阈值
       dep.partitioner.numPartitions <= bypassMergeThreshold
     }
   }
