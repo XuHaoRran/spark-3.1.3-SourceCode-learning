@@ -148,6 +148,8 @@ private[deploy] class ExecutorRunner(
 
   /**
    * Download and run the executor described in our ApplicationDescription
+   * fetchAndRunExecutor类似于启动Driver的过程，在启动Executor时首先构建CommandUtils.buildProcessBuilder，
+   * 然后是builder.start()，退出时发送ExecutorStateChanged消息给Worker
    */
   private def fetchAndRunExecutor(): Unit = {
     try {
@@ -162,6 +164,9 @@ private[deploy] class ExecutorRunner(
       val subsCommand = appDesc.command.copy(arguments = arguments, javaOpts = subsOpts)
       // 在ExecutorRunner中将通过CommandUtil构建一个ProcessBuilder，
       // 调用ProcessBuilder的start方法将会以进程的方式启动org.apache.spark.executor.CoarseGrainedExecutorBackend
+
+      // 当Worker节点中启动ExecutorRunner时，ExecutorRunner中会启动CoarseGrainedExecutorBackend进程，
+      // 在CoarseGrainedExecutorBackend的onStart方法中，向Driver发出RegisterExecutor注册请求
       val builder = CommandUtils.buildProcessBuilder(subsCommand, new SecurityManager(conf),
         memory, sparkHome.getAbsolutePath, substituteVariables)
       val command = builder.command()

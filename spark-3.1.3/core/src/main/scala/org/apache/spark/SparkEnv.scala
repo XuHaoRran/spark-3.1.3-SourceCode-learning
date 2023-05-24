@@ -371,7 +371,7 @@ object SparkEnv extends Logging {
     // 。
     val blockManagerInfo = new concurrent.TrieMap[BlockManagerId, BlockManagerInfo]()
     // 创建BlockManagerMasterEndpoint
-    //
+    // blockManagerMaster主要对内提供各节点之间的指令通信服
     // BlockManagerMaster对整个集群的Block数据进行管理，Block是Spark数据管理的单位，与数据存储没有关系，
     // 数据可能存在磁盘上，也可能存储在内存中，还可能存储在offline，如Alluxio上的了啊
     val blockManagerMaster = new BlockManagerMaster(
@@ -400,7 +400,7 @@ object SparkEnv extends Logging {
         blockManagerPort, numUsableCores, blockManagerMaster.driverEndpoint)
 
     // NB: blockManager is not valid until initialize() is called later.
-    // 创建BlockManager
+    // 创建BlockManager，主要对外提供统一的访问接口
     // 注：blockManager无效，直到initialize（）被调用
     // 这里的BlockManagerMaster和BlockManager属于聚合关系
     val blockManager = new BlockManager(

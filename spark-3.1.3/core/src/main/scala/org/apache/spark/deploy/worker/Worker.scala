@@ -674,6 +674,9 @@ private[deploy] class Worker(
       }
 
     case LaunchDriver(driverId, driverDesc, resources_) =>
+      // Worker进程：Worker的DriverRunner调用start方法，内部使用Thread来处理Driver启动。
+      // DriverRunner创建Driver在本地系统的工作目录（即Linux的文件目录），每次工作都有自己的目录，
+      // 封装好Driver的启动Command，通过ProcessBuilder启动Driver。这些内容都属于Worker进程。
       logInfo(s"Asked to launch driver $driverId")
       val driver = new DriverRunner(
         conf,
@@ -689,7 +692,7 @@ private[deploy] class Worker(
       drivers(driverId) = driver
       // 启动Driver
       driver.start()
-
+      // start之后，将消耗的cores、memory增加到coresUsed、memoryUsed
       coresUsed += driverDesc.cores
       memoryUsed += driverDesc.mem
       addResourcesUsed(resources_)

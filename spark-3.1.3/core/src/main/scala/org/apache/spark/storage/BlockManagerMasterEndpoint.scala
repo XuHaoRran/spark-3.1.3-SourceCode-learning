@@ -42,6 +42,7 @@ import org.apache.spark.util.{RpcUtils, ThreadUtils, Utils}
 /**
  * BlockManagerMasterEndpoint is an [[IsolatedRpcEndpoint]] on the master node to track statuses
  * of all the storage endpoints' block managers.
+ * 负责通过远程消息通信的方式去管理所有节点的BlockManager
  */
 private[spark]
 class BlockManagerMasterEndpoint(
@@ -668,6 +669,11 @@ class BlockManagerMasterEndpoint(
     true
   }
 
+  /**
+   * 进入getLocations方法，首先判断内存缓存结构blockLocations中是否包含blockId，如果已包含，就获取位置信息，否则返回空的信息
+   * @param blockId
+   * @return
+   */
   private def getLocations(blockId: BlockId): Seq[BlockManagerId] = {
     if (blockLocations.containsKey(blockId)) blockLocations.get(blockId).toSeq else Seq.empty
   }

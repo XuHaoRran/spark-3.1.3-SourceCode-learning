@@ -82,6 +82,8 @@ private[spark] class CoarseGrainedExecutorBackend(
 
   private var decommissioned = false
 
+  // 当Worker节点中启动ExecutorRunner时，ExecutorRunner中会启动CoarseGrainedExecutorBackend进程，
+  // 在CoarseGrainedExecutorBackend的onStart方法中，向Driver发出RegisterExecutor注册请求
   override def onStart(): Unit = {
     if (env.conf.get(DECOMMISSION_ENABLED)) {
       logInfo("Registering PWR handler to trigger decommissioning.")

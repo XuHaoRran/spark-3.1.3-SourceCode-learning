@@ -116,6 +116,8 @@ private[spark] class StandaloneSchedulerBackend(
     val sparkJavaOpts = Utils.sparkJavaOpts(conf, SparkConf.isExecutorStartupConf)
     val javaOpts = sparkJavaOpts ++ extraJavaOpts
     // 构建了一个command对象
+    // 将command封装注册给Master，Master转过来要Worker启动具体的Executor。
+    // command已经封装好指令，Executor具体要启动进程入口类CoarseGrainedExecutorBackend
     val command = Command("org.apache.spark.executor.CoarseGrainedExecutorBackend",
       args, sc.executorEnvs, classPathEntries ++ testingClassPath, libraryPathEntries, javaOpts)
     val webUrl = sc.ui.map(_.webUrl).getOrElse("")

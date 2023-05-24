@@ -239,7 +239,8 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
     }
 
     override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
-
+      // 这一步骤发生在Master启动Executor
+      // 在Worker里面的ExecutorBackend向DriverEndpoint发送RegisterExecutor消息之后，注册Executor
       case RegisterExecutor(executorId, executorRef, hostname, cores, logUrls,
           attributes, resources, resourceProfileId) =>
         //  如果executorDataMap已经存在该Executor的id,则返回Duplicate executor ID的错误
@@ -342,6 +343,9 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
     }
 
     // Make fake resource offers on all executors
+    // 每个Executor上的资源发生变动时，都将调用makeOffers方法，该方法的作用是为等待执行的任务分配资源，
+    // 并通过launchTasks方法将这些任务发送到这些Executor上运行。
+    // 这些任务将被包装成TaskRenner对象，运行于Executor上的线程池中。
     private def makeOffers(): Unit = {
       // Make sure no executor is killed while some task is launching on it
       // 确保在执行器上启动任务时没有executor 被杀死

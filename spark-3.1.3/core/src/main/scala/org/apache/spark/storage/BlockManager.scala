@@ -483,9 +483,11 @@ private[spark] class BlockManager(
    */
   def initialize(appId: String /** 应用id **/): Unit = {
     // 调用blockTransferService的init方法，blockTransferService用于在不同节点fetch数据，传送数据
+    // 初始化BlockTransferService
     blockTransferService.init(this)
     externalBlockStoreClient.foreach { blockStoreClient =>
         // 用于读取其他Executor上的shuffle files
+        // 初始化ShuffleClient
       blockStoreClient.init(appId)
     }
     blockReplicationPolicy = {
@@ -496,6 +498,7 @@ private[spark] class BlockManager(
       ret
     }
 
+    // 创建BlockManagerId
     val id =
       BlockManagerId(executorId, blockTransferService.hostName, blockTransferService.port, None)
     // 向blockManagerMaster注册BlockManager，在registerBlockManager方法中传入了slaveEndpoint，slaveEndpoint为BlockManager
@@ -848,6 +851,7 @@ private[spark] class BlockManager(
 
   /**
    * Get locations of an array of blocks.
+   * 根据BlockId获取这个BlockId所在的BlockManager
    */
   private def getLocationBlockIds(blockIds: Array[BlockId]): Array[Seq[BlockManagerId]] = {
     val startTimeNs = System.nanoTime()

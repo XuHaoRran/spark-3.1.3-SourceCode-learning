@@ -30,6 +30,16 @@ import org.apache.spark.util.RpcUtils
 /**
  * A RpcEnv implementation must have a [[RpcEnvFactory]] implementation with an empty constructor
  * so that it can be created via Reflection.
+ *
+ * （1）RpcEnv是RPC的环境（相当于Akka中的ActorSystem），
+ * 所有的RPCEndpoint都需要注册到RpcEnv实例对象中（注册的时候会指定注册的名称，
+ * 这样客户端就可以通过名称查询到RpcEndpoint的RpcEndpointRef引用，从而进行通信），
+ * 在RpcEndpoint接收到消息后会调用receive方法进行处理。
+ *
+ * （2）RpcEndpoint如果接收到需要reply的消息，就会交给自己的receiveAndReply来处理
+ * （回复时是通过RpcCallContext中的reply方法来回复发送者的），如果不需要reply，就交给receive方法来处理。
+ *
+ * （3）RpcEnvFactory是负责创建RpcEnv的，通过create方法创建RpcEnv实例对象，默认用Netty
  */
 private[spark] object RpcEnv {
 

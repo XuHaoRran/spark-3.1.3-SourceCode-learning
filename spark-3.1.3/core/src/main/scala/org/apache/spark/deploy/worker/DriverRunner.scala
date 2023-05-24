@@ -230,9 +230,20 @@ private[deploy] class DriverRunner(
       Files.append(header, stderr, StandardCharsets.UTF_8)
       CommandUtils.redirectStream(process.getErrorStream, stderr)
     }
+    // runCommandWithRetry中传入的参数是ProcessBuilderLike(builder)，这里调用new()函数创建一个ProcessBuilderLike
     runCommandWithRetry(ProcessBuilderLike(builder), initialize, supervise)
   }
 
+  /**
+   * unCommandWithRetry第一次不一定能申请成功，因此循环遍历重试。
+   * DriverRunner启动进程是通过ProcessBuilder中的process.get.waitFor来完成的。
+   * 如果supervise设置为True，exitCode为非零退出码及driver进程没有终止，我们将keepTrying设置为True，
+   * 继续循环重试启动进程
+   * @param command
+   * @param initialize
+   * @param supervise
+   * @return
+   */
   private[worker] def runCommandWithRetry(
       command: ProcessBuilderLike, initialize: Process => Unit, supervise: Boolean): Int = {
     var exitCode = -1
@@ -258,6 +269,7 @@ private[deploy] class DriverRunner(
       }
 
       val processStart = clock.getTimeMillis()
+      //
       exitCode = process.get.waitFor()
 
       // check if attempting another run

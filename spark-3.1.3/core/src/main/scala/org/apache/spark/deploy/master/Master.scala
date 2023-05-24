@@ -423,6 +423,7 @@ private[deploy] class Master(
     case DriverStateChanged(driverId, state, exception) =>
 
       // 如果Driver的各个状态符合ERROR FINISHED KILLED FAILED就将其清理掉
+      // ，都把Driver从内存数据结构中删掉，并把持久化引擎中的数据清理掉
       state match {
         case DriverState.ERROR | DriverState.FINISHED | DriverState.KILLED | DriverState.FAILED =>
           // removeDriver后，再次调用schedule方法
@@ -1357,6 +1358,7 @@ private[deploy] object Master extends Logging {
     val securityMgr = new SecurityManager(conf)
     // 构建PRC通信环境
     val rpcEnv = RpcEnv.create(SYSTEM_NAME, host, port, conf, securityMgr)
+    // 构建PRC通信终端，实例化Mater
     // 构建PRC通信终端，实例化Mater
     val masterEndpoint = rpcEnv.setupEndpoint(ENDPOINT_NAME,
       new Master(rpcEnv, rpcEnv.address, webUiPort, securityMgr, conf))

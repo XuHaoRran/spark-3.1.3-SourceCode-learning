@@ -84,6 +84,7 @@ private[spark] class SortShuffleWriter[K, V, C](
     }
     // 将写入的记录的记录集全部放入外部排序器
     // 基于sorter具体排序的实现方式，将数据写入缓冲区中。如果records数据特别多，可能会导致内存溢出，Spark现在的实现方式是Spill溢出写到磁盘中
+    // 外部排序器的insertAll方法内部在处理完每条记录时，都会检查是否需要Spill，具体看Spilabel中的maybeSpill
     sorter.insertAll(records)
 
     // Don't bother including the time to open the merged output file in the shuffle write time,

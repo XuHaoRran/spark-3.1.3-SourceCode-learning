@@ -107,6 +107,10 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
 
   /**
    * Obtains a [[ShuffleHandle]] to pass to tasks.
+   * registerShuffle方法中会判断是否满足序列化模式的条件，如果满足，则使用基于TungstenSort的Shuffle实现机制，
+   * 对应在代码中，表现为使用类型为SerializedShuffleHandle的ShuffleHandle。
+   * 上述代码进一步说明了在spark.shuffle.manager设置为sort时，内部会自动选择具体的实现机制。
+   * 对应代码的先后顺序，就是选择的先后顺序
    */
   override def registerShuffle[K, V, C](
       shuffleId: Int,
@@ -126,6 +130,11 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
     } else if (SortShuffleManager.canUseSerializedShuffle(dependency)) { // 判断是否需要采用基于Tungsten Sort的Shuffle实现机制
       // Otherwise, try to buffer map outputs in a serialized form, since this is more efficient:
       // 否则，试图Map输出缓冲区的序列化形式，因为这样效率更高的了啊
+
+      // 对应的序列化排序模式需要满足的条件
+      // 1.Shuffle依赖中不带聚合操作或没有对输出进行排序的要求
+      // 2.Shuffle的序列化器支持序列化值的重定位
+      // 3.Shuffle过程中的输出分区个数少于16777216个
       new SerializedShuffleHandle[K, V](
         shuffleId, dependency.asInstanceOf[ShuffleDependency[K, V, V]])
     } else { // 到这个位置才自动采用常规意义上的基于Sort的Shuffle实现机制
@@ -206,6 +215,8 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
           shuffleExecutorComponents)
       case other: BaseShuffleHandle[K @unchecked, V @unchecked, _] =>
         new SortShuffleWriter(
+          // 使用shuffleBlockResolver变量构建的IndexShuffleBlockResolver实例，而该变量使用的是与基于Hash的shuffle实现机制不同的解析类
+          // 即当前使用的IndexShuffleBlockResolver
           shuffleBlockResolver, other, mapId, context, shuffleExecutorComponents)
     }
   }

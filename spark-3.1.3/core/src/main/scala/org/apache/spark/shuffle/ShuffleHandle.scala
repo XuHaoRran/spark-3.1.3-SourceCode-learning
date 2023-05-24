@@ -21,7 +21,8 @@ import org.apache.spark.annotation.DeveloperApi
 
 /**
  * An opaque handle to a shuffle, used by a ShuffleManager to pass information about it to tasks.
- *
+ * ShuffleHandle比较简单，用于记录Task与Shuffle相关的一些元数据，同时也可以作为不同具体Shuffle实现机制的一种标志信息，
+ * 控制不同具体实现子类的选择等
  * @param shuffleId ID of the shuffle
  */
 @DeveloperApi
