@@ -230,6 +230,20 @@ object SparkEnv extends Logging {
 
   /**
    * Helper method to create a SparkEnv for a driver or an executor.
+   *
+   * 在SparkEnv创建的主要对象比如是
+   * rpcEnv,
+   * serializer,
+   * closureSerializer,
+   * serializerManager,
+   * mapOutputTracker,
+   * shuffleManager,
+   * broadcastManager,
+   * blockManager,
+   * securityManager,
+   * metricsSystem,
+   * memoryManager,
+   * outputCommitCoordinator,
    */
   private def create(
       conf: SparkConf,
@@ -268,6 +282,7 @@ object SparkEnv extends Logging {
       securityManager, numUsableCores, !isDriver)
 
     // Figure out which port RpcEnv actually bound to in case the original port is 0 or occupied.
+    // 弄清楚在原始端口为0或已被占用的情况下，RpcEnv实际绑定到哪个端口。
     if (isDriver) {
       conf.set(DRIVER_PORT, rpcEnv.address.port)
     }
@@ -294,6 +309,7 @@ object SparkEnv extends Logging {
 
     // Create an instance of the class named by the given SparkConf property
     // if the property is not set, possibly initializing it with our conf
+    // 创建一个由给定SparkConf属性命名的类的实例，如果该属性没有设置，可能会使用我们的conf初始化它
     def instantiateClassFromConf[T](propertyName: ConfigEntry[String]): T = {
       instantiateClass[T](conf.get(propertyName))
     }
@@ -318,6 +334,7 @@ object SparkEnv extends Logging {
     // BroadcastManager是用来管理Broadcast的，该实例对象是在SparkContext创建SparkEnv的时候创建的。
     val broadcastManager = new BroadcastManager(isDriver, conf, securityManager)
     // 跟踪所有的Mapper的输出
+    // 如果是driver的话，就创建MapOutputTrackerMaster，否则创建MapOutputTrackerWorker
     val mapOutputTracker = if (isDriver) {
       new MapOutputTrackerMaster(conf, broadcastManager, isLocal)
     } else {
@@ -346,7 +363,7 @@ object SparkEnv extends Logging {
 
     // ShuffleManager是一个用于shuffle系统的可插拔接口。在Driver端SparkEnv中创建ShuffleManager，在每个Executor上也会创建。基于spark.shuffle.manager进行设置。
     val shuffleManager = instantiateClass[ShuffleManager](shuffleMgrClass)
-
+    // 创建memoryManager，是UnifiedMemoryManager
     val memoryManager: MemoryManager = UnifiedMemoryManager(conf, numUsableCores)
 
     val blockManagerPort = if (isDriver) {

@@ -40,6 +40,9 @@ import org.apache.spark.metrics.source.Source
  * Until `start()` is called, all posted events are only buffered. Only after this listener bus
  * has started will events be actually propagated to all attached listeners. This listener bus
  * is stopped when `stop()` is called, and it will drop further events after stopping.
+ *
+ * 异步地将SparkListenerEvents传递给已注册的SparkListener。在调用start（）之前，所有发布的事件都只进行缓冲。
+ * 只有在这个侦听器总线启动之后，事件才会真正传播到所有连接的侦听器。此侦听器总线在调用stop（）时停止，并且在停止后将丢弃更多事件。
  */
 private[spark] class LiveListenerBus(conf: SparkConf) {
 

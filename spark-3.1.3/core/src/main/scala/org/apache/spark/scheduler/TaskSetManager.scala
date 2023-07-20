@@ -72,6 +72,7 @@ private[spark] class TaskSetManager(
   private val addedFiles = HashMap[String, Long](sched.sc.addedFiles.toSeq: _*)
   private val addedArchives = HashMap[String, Long](sched.sc.addedArchives.toSeq: _*)
 
+  // 最大driver的rsult内存1g
   val maxResultSize = conf.get(config.MAX_RESULT_SIZE)
 
   // Serializer for closures and tasks.

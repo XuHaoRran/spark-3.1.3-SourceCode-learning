@@ -361,6 +361,12 @@ private[spark] abstract class MapOutputTracker(conf: SparkConf) extends Logging 
    * but endMapIndex is excluded). If endMapIndex=Int.MaxValue, the actual endMapIndex will be
    * changed to the length of total map outputs.
    *
+   * 从执行器调用，以获取每个洗牌区块的服务器 URI 和输出大小。
+   * 需要从给定范围内的映射器（startMapIndex 包括在内，但 endMapIndex 不包括在内）的映射输出分区（startPartition
+   * endPartition不包括在该范围内）内的映射器范围（startMapIndex包括在内，但endMapIndex不包括在内
+   * 但 endMapIndex 不包括在内）。如果 endMapIndex=Int.MaxValue，实际 endMapIndex 将被
+   * 将改为map总输出的长度。
+   *
    * @return A sequence of 2-item tuples, where the first item in the tuple is a BlockManagerId,
    *         and the second item is a sequence of (shuffle block id, shuffle block size, map index)
    *         tuples describing the shuffle blocks that are stored at that block manager.
@@ -401,6 +407,7 @@ private[spark] class MapOutputTrackerMaster(
   extends MapOutputTracker(conf) {
 
   // The size at which we use Broadcast to send the map output statuses to the executors
+  // 通过广播发送map输出状态到excutor的大小
   private val minSizeForBroadcast = conf.get(SHUFFLE_MAPOUTPUT_MIN_SIZE_FOR_BROADCAST).toInt
 
   /** Whether to compute locality preferences for reduce tasks */
@@ -409,27 +416,36 @@ private[spark] class MapOutputTrackerMaster(
   // Number of map and reduce tasks above which we do not assign preferred locations based on map
   // output sizes. We limit the size of jobs for which assign preferred locations as computing the
   // top locations by size becomes expensive.
+  // map和reduce任务的数量超过这个值，我们就不再基于map输出大小来分配首选位置。
+  // 我们限制了分配首选位置的作业大小，因为计算按大小排序的顶级位置变得很昂贵。
   private val SHUFFLE_PREF_MAP_THRESHOLD = 1000
   // NOTE: This should be less than 2000 as we use HighlyCompressedMapStatus beyond that
+  // 注意：这应该小于2000，因为我们在那之后使用HighlyCompressedMapStatus
   private val SHUFFLE_PREF_REDUCE_THRESHOLD = 1000
 
   // Fraction of total map output that must be at a location for it to considered as a preferred
   // location for a reduce task. Making this larger will focus on fewer locations where most data
   // can be read locally, but may lead to more delay in scheduling if those locations are busy.
+
+  // 必须在位置上的总map输出的分数，以便将其视为reduce任务的首选位置。
+  // 使其更大将专注于更少的位置，大多数数据可以在本地读取，但如果这些位置很忙，可能会导致更多的调度延迟。
   private val REDUCER_PREF_LOCS_FRACTION = 0.2
 
   // HashMap for storing shuffleStatuses in the driver.
   // Statuses are dropped only by explicit de-registering.
   // Exposed for testing
+  // 在driver中存储shuffleStatuses的HashMap。状态只能通过显式注销来删除。暴露给测试
   val shuffleStatuses = new ConcurrentHashMap[Int, ShuffleStatus]().asScala
 
   private val maxRpcMessageSize = RpcUtils.maxMessageSizeBytes(conf)
 
   // requests for map output statuses
+  // map输出状态的请求
   private val mapOutputRequests = new LinkedBlockingQueue[GetMapOutputMessage]
 
   // Thread pool used for handling map output status requests. This is a separate thread pool
   // to ensure we don't block the normal dispatcher threads.
+  // 用于处理map输出状态请求的线程池。这是一个单独的线程池，以确保我们不会阻塞正常的调度程序线程。
   private val threadpool: ThreadPoolExecutor = {
     val numThreads = conf.get(SHUFFLE_MAPOUTPUT_DISPATCHER_NUM_THREADS)
     val pool = ThreadUtils.newDaemonFixedThreadPool(numThreads, "map-output-dispatcher")
@@ -441,6 +457,7 @@ private[spark] class MapOutputTrackerMaster(
 
   // Make sure that we aren't going to exceed the max RPC message size by making sure
   // we use broadcast to send large map output statuses.
+  // 确保我们不会超过最大的RPC消息大小，通过确保我们使用广播发送大的map输出状态。
   if (minSizeForBroadcast > maxRpcMessageSize) {
     val msg = s"${SHUFFLE_MAPOUTPUT_MIN_SIZE_FOR_BROADCAST.key} ($minSizeForBroadcast bytes) " +
       s"must be <= spark.rpc.message.maxSize ($maxRpcMessageSize bytes) to prevent sending an " +

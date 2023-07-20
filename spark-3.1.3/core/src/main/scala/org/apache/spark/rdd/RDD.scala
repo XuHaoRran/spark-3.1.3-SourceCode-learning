@@ -391,10 +391,11 @@ abstract class RDD[T: ClassTag](
    * Compute an RDD partition or read it from a checkpoint if the RDD is checkpointing.
    */
   private[spark] def computeOrReadCheckpoint(split: Partition, context: TaskContext): Iterator[T] =
-  {
+  { // 如果RDD进行了checkpoint，则从父RDD的iterator中直接获取数据
     if (isCheckpointedAndMaterialized) {
       firstParent[T].iterator(split, context)
     } else {
+      // 没有checkpoint，则重新计算RDD的数据
       // 具体计算有具体的RDD，如果MapPartitionsRDD的compute，传进去的Partition及TaskContext上下文
       compute(split, context)
     }

@@ -67,6 +67,9 @@ class BlockManagerMaster(
    * Register the BlockManager's id with the driver. The input BlockManagerId does not contain
    * topology information. This information is obtained from the master and we respond with an
    * updated BlockManagerId fleshed out with this information.
+   *
+   * 向driver注册 BlockManager ID。输入的 BlockManagerId 不包含拓扑信息。我们会从主站获取拓扑信息，
+   * 并根据这些信息更新 BlockManagerId。
    */
   def registerBlockManager(
       id: BlockManagerId,

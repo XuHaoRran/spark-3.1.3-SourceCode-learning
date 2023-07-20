@@ -91,7 +91,7 @@ private[spark] abstract class MemoryManager(
 
   /**
    * Acquire N bytes of memory to cache the given block, evicting existing ones if necessary.
-   *
+   * 获取N个字节的内存来缓存给定的块，必要时驱逐现有的块。
    * @return whether all N bytes were successfully granted.
    */
   def acquireStorageMemory(blockId: BlockId, numBytes: Long, memoryMode: MemoryMode): Boolean

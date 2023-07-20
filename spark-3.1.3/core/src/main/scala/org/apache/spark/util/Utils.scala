@@ -1435,6 +1435,10 @@ private[spark] object Utils extends Logging {
    * in `out.write`, it's likely `out` may be corrupted and `out.close` will
    * fail as well. This would then suppress the original/likely more meaningful
    * exception from the original `out.write` call.
+   *
+   * 执行一个代码块，然后执行一个 finally 代码块，但如果异常发生在 finally 代码块中，则不要抑制原始异常。
+   * 这主要是 finally { out.close() } 代码块的问题，在该代码块中，需要调用 close 来清理 out，但如果异常发生在 out.write 中，
+   * 则 out 很可能已损坏，out.close 也会失败。这样就会抑制原来调用 out.write 时产生的/可能更有意义的异常。
    */
   def tryWithSafeFinally[T](block: => T)(finallyBlock: => Unit): T = {
     var originalThrowable: Throwable = null
@@ -3088,6 +3092,10 @@ private[util] object CallerContext extends Logging {
  * specific applications impacting parts of the Hadoop system and potential problems they may be
  * creating (e.g. overloading NN). As HDFS mentioned in HDFS-9184, for a given HDFS operation, it's
  * very helpful to track which upper level job issues it.
+ *
+ * 用于为 HDFS 和 Yarn 设置 Spark 调用者上下文的实用程序类。上下文将由传入的参数构建。当 Spark 应用程序在 Yarn 和 HDFS 上运行时，
+ * 其调用者上下文将被写入 Yarn RM 审计日志和 hdfs-audit.log。这可以帮助用户更好地诊断和了解特定应用程序如何影响 Hadoop 系统的各个部分，
+ * 以及它们可能造成的潜在问题（如 NN 过载）。正如 HDFS 在 HDFS-9184 中提到的，对于给定的 HDFS 操作，跟踪是哪个上层作业发布的非常有帮助。
  *
  * @param from who sets up the caller context (TASK, CLIENT, APPMASTER)
  *

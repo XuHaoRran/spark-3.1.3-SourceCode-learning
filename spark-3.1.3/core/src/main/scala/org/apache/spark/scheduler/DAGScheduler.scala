@@ -789,7 +789,9 @@ private[spark] class DAGScheduler(
     missing.toList
   }
 
-  /** Invoke `.partitions` on the given RDD and all of its ancestors  */
+  /** Invoke `.partitions` on the given RDD and all of its ancestors
+   * 调用给定RDD及其所有祖先上的.spartition
+   * */
   private def eagerlyComputePartitionsForRddAndAncestors(rdd: RDD[_]): Unit = {
     val startTime = System.nanoTime
     val visitedRdds = new HashSet[RDD[_]]
@@ -932,7 +934,9 @@ private[spark] class DAGScheduler(
     // `.partitions` on every RDD in the DAG to ensure that `getPartitions()`
     // is evaluated outside of the DAGScheduler's single-threaded event loop:
     eagerlyComputePartitionsForRddAndAncestors(rdd)
+  // 在这里，我们已经把rdd的partitions都计算出来了，这样就不会在下面的代码中再去计算了
 
+    // 创建jobId
     val jobId = nextJobId.getAndIncrement()
     if (partitions.isEmpty) {
       val clonedProperties = Utils.cloneProperties(properties)
@@ -1436,6 +1440,9 @@ private[spark] class DAGScheduler(
    * Even with dynamic resource allocation kicking in and significantly reducing the number
    * of available active executors, we would still be able to get sufficient shuffle service
    * locations for block push/merge by getting the historical locations of past executors.
+   *
+   * 如果启用了基于推送的洗牌，则为给定的洗牌映射阶段设置用于区块推送/合并的洗牌服务。
+   * 即使在动态资源分配启动并大幅减少可用活动执行器数量的情况下，我们仍能通过获取过去执行器的历史位置，为块推送/合并获取足够的洗牌服务位置。
    */
   private def prepareShuffleServicesForShuffleMapStage(stage: ShuffleMapStage): Unit = {
     // TODO(SPARK-32920) Handle stage reuse/retry cases separately as without finalize
@@ -1488,6 +1495,7 @@ private[spark] class DAGScheduler(
         // Only generate merger location for a given shuffle dependency once. This way, even if
         // this stage gets retried, it would still be merging blocks using the same set of
         // shuffle services.
+        // 仅为给定的shuffle依赖生成合并器位置一次。这样，即使这个stage被重试，它仍然会使用相同的一组shuffle服务来合并块。
         if (pushBasedShuffleEnabled) {
           prepareShuffleServicesForShuffleMapStage(s)
         }
@@ -1500,7 +1508,7 @@ private[spark] class DAGScheduler(
         case s: ShuffleMapStage => // 如果是ShuffleMapStage，则从getPreferredLocs(stage.rdd, id)获取任务本地性信息
           // partitionsToCompute获得要计算的Partitions的id
           partitionsToCompute.map { id => (id, getPreferredLocs(stage.rdd, id))}.toMap
-        case s: ResultStage => // 则从getPreferredLocs(stage.rdd, p)获取任务本地性信息
+      case s: ResultStage => // 则从getPreferredLocs(stage.rdd, p)获取任务本地性信息
           partitionsToCompute.map { id =>
             val p = s.partitions(id)
             (id, getPreferredLocs(stage.rdd, p))
@@ -1533,6 +1541,9 @@ private[spark] class DAGScheduler(
     // task gets a different copy of the RDD. This provides stronger isolation between tasks that
     // might modify state of objects referenced in their closures. This is necessary in Hadoop
     // where the JobConf/Configuration object is not thread-safe.
+    // 任务的广播二进制文件，用于向执行器分派任务。请注意，我们广播的是 RDD 的序列化副本，对于每个任务，
+    // 我们都将对其进行反序列化，这意味着每个任务都会获得不同的 RDD 副本。这就在可能修改闭包中引用对象状态的任务之间提供了更强的隔离性。
+    // 这在 Hadoop 中是必要的，因为 JobConf/Configuration 对象不是线程安全的。
     var taskBinary: Broadcast[Array[Byte]] = null
     var partitions: Array[Partition] = null
     try {

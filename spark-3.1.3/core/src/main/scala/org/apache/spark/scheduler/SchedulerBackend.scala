@@ -24,6 +24,8 @@ import org.apache.spark.storage.BlockManagerId
  * A backend interface for scheduling systems that allows plugging in different ones under
  * TaskSchedulerImpl. We assume a Mesos-like model where the application gets resource offers as
  * machines become available and can launch tasks on them.
+ * 调度系统的后端接口，允许在 TaskSchedulerImpl 下插入不同的调度系统。我们假设采用类似 Mesos 的模式，
+ * 即当机器可用时，应用程序会收到资源报价，并可在上面启动任务。
  */
 private[spark] trait SchedulerBackend {
   private val appId = "spark-application-" + System.currentTimeMillis

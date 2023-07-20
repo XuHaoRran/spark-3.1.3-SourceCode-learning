@@ -112,6 +112,7 @@ private[spark] class OutputCommitCoordinator(conf: SparkConf, isDriver: Boolean)
   /**
    * Called by the DAGScheduler when a stage starts. Initializes the stage's state if it hasn't
    * yet been initialized.
+   * 当阶段启动时由 DAGScheduler 调用。如果尚未初始化，则初始化阶段的状态。
    *
    * @param stage the stage id.
    * @param maxPartitionId the maximum partition id that could appear in this stage's tasks (i.e.

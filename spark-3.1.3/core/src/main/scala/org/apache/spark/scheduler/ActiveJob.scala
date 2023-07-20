@@ -33,6 +33,13 @@ import org.apache.spark.util.CallSite
  * other earlier stages (for RDDs in the DAG it depends on), and multiple jobs may share some of
  * these previous stages. These dependencies are managed inside DAGScheduler.
  *
+ * DAGScheduler 中正在运行的作业。
+ * 作业可以有两种类型：结果作业（计算结果阶段以执行操作）或地图阶段作业（在提交任何下游阶段之前计算 ShuffleMap 阶段的地图输出）。
+ * 后者用于自适应查询规划，在提交后续阶段之前查看地图输出统计数据。我们使用该类的 finalStage 字段来区分这两类作业。
+ * 我们只跟踪客户通过 DAGScheduler 的 submitJob 或 submitMapStage 方法直接提交的 "叶子 "阶段的作业。
+ * 不过，无论哪种类型的作业，都可能会导致其他早期阶段（对于它所依赖的 DAG 中的 RDD）的执行，
+ * 而且多个作业可能会共享其中一些早期阶段。这些依赖关系由 DAGScheduler 管理。
+ *
  * <p>保存了当前Job的一些信息
  *
  * @param jobId A unique ID for this job.

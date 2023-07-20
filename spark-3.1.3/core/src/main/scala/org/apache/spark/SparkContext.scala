@@ -518,7 +518,7 @@ class SparkContext(config: SparkConf) extends Logging {
         _conf.set("spark.app.initial.archive.urls", addedArchives.keys.toSeq.mkString(","))
       }
     }
-
+    // 每个executor的内存大小
     _executorMemory = _conf.getOption(EXECUTOR_MEMORY.key)
       .orElse(Option(System.getenv("SPARK_EXECUTOR_MEMORY")))
       .orElse(Option(System.getenv("SPARK_MEM"))
@@ -548,6 +548,7 @@ class SparkContext(config: SparkConf) extends Logging {
 
     // We need to register "HeartbeatReceiver" before "createTaskScheduler" because Executor will
     // retrieve "HeartbeatReceiver" in the constructor. (SPARK-6640)
+    // 创建一个HeartbeatReceiver的实例，用于接收Executor的心跳信息
     _heartbeatReceiver = env.rpcEnv.setupEndpoint(
       HeartbeatReceiver.ENDPOINT_NAME, new HeartbeatReceiver(this))
 
@@ -560,6 +561,7 @@ class SparkContext(config: SparkConf) extends Logging {
     _schedulerBackend = sched
     _taskScheduler = ts
     // 实例化DAGScheduler时传入当前的sparkcontext实例化对象
+    // taskSheduler也传进来
     _dagScheduler = new DAGScheduler(this)
     _heartbeatReceiver.ask[Boolean](TaskSchedulerIsSet)
 
@@ -592,6 +594,7 @@ class SparkContext(config: SparkConf) extends Logging {
       System.setProperty("spark.ui.proxyBase", proxyUrl)
     }
     _ui.foreach(_.setAppId(_applicationId))
+    // 初始化blockManager
     _env.blockManager.initialize(_applicationId)
     FallbackStorage.registerBlockManagerIfNeeded(_env.blockManager.master, _conf)
 
@@ -1523,6 +1526,11 @@ class SparkContext(config: SparkConf) extends Logging {
     assertNotStopped()
     require(!classOf[RDD[_]].isAssignableFrom(classTag[T].runtimeClass),
       "Can not directly broadcast RDDs; instead, call collect() and broadcast the result.")
+    // 在这里创建了TorrentBroadcastFactory
+    // Spark 2.0版本中的TorrentBroadcast方式：数据开始在Driver中，A节点如果使用了数据，A就成为供应源，这时Driver节点、
+    // A节点两个节点成为供应源，如第三个节点B访问的时候，第三个节点B也成了供应源，同样地，第四个节点、第五个节点……
+    // 都成了供应源，这些都被BlockManager管理，这样不会导致一个节点压力太大，从理论上讲，数据使用的节点越多，
+    // 网络速度就越快。
     val bc = env.broadcastManager.newBroadcast[T](value, isLocal)
     val callSite = getCallSite
     logInfo("Created broadcast " + bc.id + " from " + callSite.shortForm)
@@ -2898,7 +2906,7 @@ object SparkContext extends Logging {
       val defaultProf = sc.resourceProfileManager.defaultResourceProfile
       ResourceUtils.warnOnWastedResources(defaultProf, sc.conf, Some(executorCores))
     }
-
+    // 根据master的配置来创建不同的taskschedulerimpl，和schedulerbackend
     master match {
       case "local" =>
         checkResourcesPerTask(1)

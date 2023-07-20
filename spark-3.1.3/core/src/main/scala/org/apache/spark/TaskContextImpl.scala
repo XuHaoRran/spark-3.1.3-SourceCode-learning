@@ -33,7 +33,7 @@ import org.apache.spark.shuffle.FetchFailedException
 import org.apache.spark.util._
 
 
-/**
+  /**
  * A [[TaskContext]] implementation.
  *
  * A small note on thread safety. The interrupted & fetchFailed fields are volatile, this makes
@@ -42,6 +42,11 @@ import org.apache.spark.util._
  * that you cannot add a completion listener in one thread while we are completing (and calling
  * the completion listeners) in another thread. Other state is immutable, however the exposed
  * `TaskMetrics` & `MetricsSystem` objects are not thread safe.
+ *
+ * 一个 TaskContext 实现。
+ * 关于线程安全的一点说明。interrupted 和 fetchFailed 字段是易失字段，这确保了更新在不同线程间始终可见。
+ * 完成和失败标志及其回调受上下文实例锁定保护。例如，这可以确保当我们在另一个线程中完成（并调用完成监听器）时，
+   * 无法在一个线程中添加完成监听器。其他状态是不可变的，但暴露的 TaskMetrics 和 MetricsSystem 对象不是线程安全的。
  */
 private[spark] class TaskContextImpl(
     override val stageId: Int,

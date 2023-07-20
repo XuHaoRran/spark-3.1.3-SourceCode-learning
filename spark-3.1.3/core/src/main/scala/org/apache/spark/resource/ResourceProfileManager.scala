@@ -34,6 +34,9 @@ import org.apache.spark.util.Utils.isTesting
  * and everywhere else we can use the ResourceProfile Id to save on space.
  * Note we never remove a resource profile at this point. Its expected this number is small
  * so this shouldn't be much overhead.
+ *
+ * 资源配置文件管理器。管理器允许在一个地方保存实际的ResourceProfiles，而在其他任何地方我们都可以使用ResourceProfileId来节省空间。
+ * 请注意，此时我们从未删除资源配置文件。预计这个数字很小，所以应该不会有太多开销。
  */
 @Evolving
 private[spark] class ResourceProfileManager(sparkConf: SparkConf,

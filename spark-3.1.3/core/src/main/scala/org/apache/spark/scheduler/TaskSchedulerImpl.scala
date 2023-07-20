@@ -101,6 +101,7 @@ private[spark] class TaskSchedulerImpl(
   val conf = sc.conf
 
   // How often to check for speculative tasks
+  // 检查推测任务的频率，默认是100ms
   val SPECULATION_INTERVAL_MS = conf.get(SPECULATION_INTERVAL)
 
   // Duplicate copies of a task will only be launched if the original copy has been running for
@@ -120,6 +121,7 @@ private[spark] class TaskSchedulerImpl(
 
   // TaskSetManagers are not thread safe, so any access to one should be synchronized
   // on this class.  Protected by `this`
+  // TaskSetManagers不是线程安全的，所以任何对它的访问都应该在这个类上同步
   private val taskSetsByStageIdAndAttempt = new HashMap[Int, HashMap[Int, TaskSetManager]]
 
   // keyed by taskset
@@ -211,6 +213,7 @@ private[spark] class TaskSchedulerImpl(
     // 并且床架你的对象会立即调用buildPools创建相应数量的Pool存放和管理TaskSetManager的实例对象。
     // 实现SchedulerBuilder接口的具体类都是SchedulerBuilder的内部类。
     schedulableBuilder = {
+      // 默认情况FIFO
       schedulingMode match {
         case SchedulingMode.FIFO =>
           new FIFOSchedulableBuilder(rootPool)
@@ -284,7 +287,7 @@ private[spark] class TaskSchedulerImpl(
       }
       // 将任务加入调度池
       stageTaskSets(taskSet.stageAttemptId) = manager
-      // 创建了TaskSetManager后，非常关键的一行是则合格代码
+      // 创建了TaskSetManager后，非常关键的一行是这个代码
       // SchedulableBuilder会确定TaskSetManager的调度顺序，
       // 然后按照TaskSetManager的locality aware来确定每个Task具体运行在哪个ExecutorBackend中。
       //

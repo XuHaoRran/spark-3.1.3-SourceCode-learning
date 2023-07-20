@@ -1024,6 +1024,7 @@ private[spark] class BlockManager(
     // Because all the remote blocks are registered in driver, it is not necessary to ask
     // all the storage endpoints to get block status.
     // 因为所有的远程块都注册在driver中，所以不需要要求所有的从执行器获取块状态
+    // 去driver那里获取地址和状态
     val locationsAndStatusOption = master.getLocationsAndStatus(blockId, blockManagerId.host)
     if (locationsAndStatusOption.isEmpty) {
       logDebug(s"Block $blockId is unknown by block manager master")
@@ -1270,7 +1271,8 @@ private[spark] class BlockManager(
   /**
    * Retrieve the given block if it exists, otherwise call the provided `makeIterator` method
    * to compute the block, persist it, and return its values.
-   *
+   * 检索给定的块（如果存在），否则调用提供的makeiterator方法来计算该块，持久化它，并返回它的值
+   * 返回：如果块被成功缓存，则返回BlockResult；如果块无法被缓存，则输出迭代器
    * @return either a BlockResult if the block was successfully cached, or an iterator if the block
    *         could not be cached.
    */
@@ -1588,6 +1590,10 @@ private[spark] class BlockManager(
    * Attempts to cache spilled bytes read from disk into the MemoryStore in order to speed up
    * subsequent reads. This method requires the caller to hold a read lock on the block.
    *
+   * 尝试将从磁盘读取的溢出字节缓存到MemoryStore中，以加快后续读取速度。此方法要求调用方持有块上的读锁。
+   * 返回：如果put成功，则返回内存存储中字节的副本，否则返回None。如果这从内存存储中返回字节
+   * ，那么原始磁盘存储字节将被自动释放，调用方不应继续使用它们。否则，如果返回None，
+   * 则原始磁盘存储字节将不受影响。
    * @return a copy of the bytes from the memory store if the put succeeded, otherwise None.
    *         If this returns bytes from the memory store then the original disk store bytes will
    *         automatically be disposed and the caller should not continue to use them. Otherwise,

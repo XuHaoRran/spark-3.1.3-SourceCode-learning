@@ -529,47 +529,49 @@ class BlockManagerMasterEndpoint(
   }
 
   /**
+   * BlockManagerMaster回应BlockManager的注册请求
    * Returns the BlockManagerId with topology information populated, if available.
    */
   private def register(
-      idWithoutTopologyInfo: BlockManagerId,
-      localDirs: Array[String],
-      maxOnHeapMemSize: Long,
-      maxOffHeapMemSize: Long,
-      storageEndpoint: RpcEndpointRef): BlockManagerId = {
-    // the dummy id is not expected to contain the topology information.
-    // we get that info here and respond back with a more fleshed out block manager id
-    // dummy id不应包含拓扑信息
-    // 在这里的得到信息和回应一个块标识符
-    val id = BlockManagerId(
-      idWithoutTopologyInfo.executorId,
-      idWithoutTopologyInfo.host,
-      idWithoutTopologyInfo.port,
-      topologyMapper.getTopologyForHost(idWithoutTopologyInfo.host))
+        idWithoutTopologyInfo: BlockManagerId,
+        localDirs: Array[String],
+        maxOnHeapMemSize: Long,
+        maxOffHeapMemSize: Long,
+        storageEndpoint: RpcEndpointRef): BlockManagerId = {
+        // the dummy id is not expected to contain the topology information.
+        // we get that info here and respond back with a more fleshed out block manager id
+        // dummy id不应包含拓扑信息
+        // 在这里的得到信息和回应一个块标识符
+        val id = BlockManagerId(
+          idWithoutTopologyInfo.executorId,
+          idWithoutTopologyInfo.host,
+          idWithoutTopologyInfo.port,
+          topologyMapper.getTopologyForHost(idWithoutTopologyInfo.host))
 
-    val time = System.currentTimeMillis()
-    executorIdToLocalDirs.put(id.executorId, localDirs)
-    if (!blockManagerInfo.contains(id)) {
-      // 如果blockManagerInfo没有包含BlockManagerId，
-      // 根据BlockManagerId.executorId查询BlockManagerId，如果匹配到旧的BlockManagerId，就进行清理
-      blockManagerIdByExecutor.get(id.executorId) match {
-        case Some(oldId) =>
-          // A block manager of the same executor already exists, so remove it (assumed dead)
-          // 同一个Executor的block manager已经存在，所以删除它
-          logError("Got two different block manager registrations on same executor - "
-              + s" will replace old one $oldId with new one $id")
-          removeExecutor(id.executorId)
-        case None =>
-      }
-      logInfo("Registering block manager %s with %s RAM, %s".format(
-        id.hostPort, Utils.bytesToString(maxOnHeapMemSize + maxOffHeapMemSize), id))
-      // 将blockmanagerid加入blockmanagerinfo信息，在listenerBus中进行监听，函数返回BlockMnagerId,完成注册
-      blockManagerIdByExecutor(id.executorId) = id
+        val time = System.currentTimeMillis()
+        executorIdToLocalDirs.put(id.executorId, localDirs)
+        if (!blockManagerInfo.contains(id)) {
+          // 如果blockManagerInfo没有包含BlockManagerId，
+          // 根据BlockManagerId.executorId查询BlockManagerId，如果匹配到旧的BlockManagerId，就进行清理
+          blockManagerIdByExecutor.get(id.executorId) match {
+            case Some(oldId) =>
+              // A block manager of the same executor already exists, so remove it (assumed dead)
+              // 同一个Executor的block manager已经存在，所以删除它
+              logError("Got two different block manager registrations on same executor - "
+                  + s" will replace old one $oldId with new one $id")
+              removeExecutor(id.executorId)
+            case None =>
+          }
+          // 在单机情况下maxOnHeapMemSize=4943826124, 4.6GiB
+          logInfo("Registering block manager %s with %s RAM, %s".format(
+            id.hostPort, Utils.bytesToString(maxOnHeapMemSize + maxOffHeapMemSize), id))
+          // 将blockmanagerid加入blockmanagerinfo信息，在listenerBus中进行监听，函数返回BlockMnagerId,完成注册
+          blockManagerIdByExecutor(id.executorId) = id
 
-      val externalShuffleServiceBlockStatus =
+          val externalShuffleServiceBlockStatus =
         if (externalShuffleServiceRddFetchEnabled) {
           val externalShuffleServiceBlocks = blockStatusByShuffleService
-            .getOrElseUpdate(externalShuffleServiceIdOnHost(id), new JHashMap[BlockId, BlockStatus])
+              .getOrElseUpdate(externalShuffleServiceIdOnHost(id), new JHashMap[BlockId, BlockStatus])
           Some(externalShuffleServiceBlocks)
         } else {
           None

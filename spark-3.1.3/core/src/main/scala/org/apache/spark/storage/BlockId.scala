@@ -49,6 +49,7 @@ sealed abstract class BlockId {
 
 @DeveloperApi
 case class RDDBlockId(rddId: Int, splitIndex: Int) extends BlockId {
+  // rddid和splitindex组成了blockid的name
   override def name: String = "rdd_" + rddId + "_" + splitIndex
 }
 
