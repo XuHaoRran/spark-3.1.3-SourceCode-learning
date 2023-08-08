@@ -22,6 +22,7 @@ import org.apache.spark.scheduler.ExecutorResourceInfo
 
 /**
  * Grouping of data for an executor used by CoarseGrainedSchedulerBackend.
+ * CoarseGrainedSchedulerBackend 使用的executor数据分组。
  *
  * @param executorEndpoint The RpcEndpointRef representing this executor
  * @param executorAddress The network address of this executor

@@ -115,6 +115,11 @@ private[spark] abstract class MemoryManager(
    * task has a chance to ramp up to at least 1 / 2N of the total memory pool (where N is the # of
    * active tasks) before it is forced to spill. This can happen if the number of tasks increase
    * but an older task had a lot of memory already.
+   *
+   * 尝试为当前任务获取最多 numBytes 的执行内存，并返回获取的字节数，如果无法分配，则返回 0。
+   * 在某些情况下，该调用可能会阻塞，直到有足够的空闲内存，以确保每个任务在被迫溢出内存之前，
+   * 都有机会提升到总内存池的至少 1/2N（N 是活动任务的数量）。
+   * 如果任务数量增加，但旧任务已拥有大量内存，就会出现这种情况。
    */
   private[memory]
   def acquireExecutionMemory(

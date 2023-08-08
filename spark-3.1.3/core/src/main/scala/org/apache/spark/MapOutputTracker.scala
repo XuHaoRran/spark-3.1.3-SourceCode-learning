@@ -112,6 +112,7 @@ private class ShuffleStatus(numPartitions: Int) extends Logging {
   /**
    * Register a map output. If there is already a registered location for the map output then it
    * will be replaced by the new location.
+   * register map output。如果已经注册了map输出位置，则该位置将被新位置取代。
    */
   def addMapOutput(mapIndex: Int, status: MapStatus): Unit = withWriteLock {
     if (mapStatuses(mapIndex) == null) {

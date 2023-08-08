@@ -103,17 +103,25 @@ final class ShuffleExternalSorter extends MemoryConsumer {
    * spilling, although in principle we could recycle these pages across spills (on the other hand,
    * this might not be necessary if we maintained a pool of re-usable pages in the TaskMemoryManager
    * itself).
+   *
+   * allocatedPages是用来保存待排序的record的page（MemoryBlock）链表。当发生spill后，链表中page就会被释放
    */
   private final LinkedList<MemoryBlock> allocatedPages = new LinkedList<>();
 
+  // spills是将排序后的record写入磁盘文件作为spill file后，这些spill file的元数据信息。
   private final LinkedList<SpillInfo> spills = new LinkedList<>();
 
   /** Peak memory used by this sorter so far, in bytes. **/
   private long peakMemoryUsedBytes;
 
   // These variables are reset after spilling:
+  // inMemSorter是用来根据record的partition id将record排序的ShuffleInMemorySorter
   @Nullable private ShuffleInMemorySorter inMemSorter;
+
+  // currentPage，page链表中用于保存待排序的record的当前page。一个page会保存多个record，record通过追加的方式添加到page。
   @Nullable private MemoryBlock currentPage = null;
+
+  // pageCursor，record追加到当前page时，当前page的可用空间的起始地址（或下标）。
   private long pageCursor = -1;
 
   ShuffleExternalSorter(
@@ -139,6 +147,7 @@ final class ShuffleExternalSorter extends MemoryConsumer {
     this.numElementsForSpillThreshold =
         (int) conf.get(package$.MODULE$.SHUFFLE_SPILL_NUM_ELEMENTS_FORCE_SPILL_THRESHOLD());
     this.writeMetrics = writeMetrics;
+    // 它会从sparkConf中获取配置信息判断是否使用RadixSort对record进行排序，默认为true。
     this.inMemSorter = new ShuffleInMemorySorter(
       this, initialSize, (boolean) conf.get(package$.MODULE$.SHUFFLE_SORT_USE_RADIXSORT()));
     this.peakMemoryUsedBytes = getMemoryUsage();

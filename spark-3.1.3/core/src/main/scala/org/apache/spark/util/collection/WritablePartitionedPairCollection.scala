@@ -61,7 +61,7 @@ private[spark] trait WritablePartitionedPairCollection[K, V] {
       def writeNext(writer: PairsWriter): Unit = {
         writer.write(cur._1._2, cur._2)
         cur = if (it.hasNext) it.next() else null
-      }
+    }
 
       def hasNext(): Boolean = cur != null
 
@@ -78,6 +78,7 @@ private[spark] object WritablePartitionedPairCollection {
 
   /**
    * A comparator for (Int, K) pairs that orders them both by their partition ID and a key ordering.
+   * （Int，K）pair的比较器，根据它们的分区ID和key顺序对它们进行排序。
    */
   def partitionKeyComparator[K](keyComparator: Comparator[K]): Comparator[(Int, K)] =
     (a: (Int, K), b: (Int, K)) => {

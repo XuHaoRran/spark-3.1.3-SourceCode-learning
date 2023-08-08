@@ -35,8 +35,7 @@ object WordCount {
       * RDD的创建基本有三种方式：根据外部的数据来源（例如HDFS）、根据Scala集合、由其它的RDD操作
       * 数据会被RDD划分成为一系列的Partitions，分配到每个Partition的数据属于一个Task的处理范畴
       */
-
-    val lines = sc.textFile("D:\\programe\\spark-3.1.3\\spark-3.1.3\\examples\\src\\main\\scala\\org\\apache\\spark\\examples\\my_test\\chapter3_RDD_DataSet\\helloSpark.txt", 1) //读取本地文件并设置为一个Partion
+    val lines = sc.textFile("D:\\programe\\BigDataPrograms\\spark-3.1.3\\spark-3.1.3\\examples\\src\\main\\scala\\org\\apache\\spark\\examples\\my_test\\chapter3_RDD_DataSet\\helloSpark.txt", 1) //读取本地文件并设置为一个Partion
     /**
       * 第4步：对初始的RDD进行Transformation级别的处理，例如map、filter等高阶函数等的编程，来进行具体的数据计算
       * 第4.1步：讲每一行的字符串拆分成单个的单词

@@ -32,6 +32,8 @@ import org.apache.spark.util.Utils
  * Result returned by a ShuffleMapTask to a scheduler. Includes the block manager address that the
  * task has shuffle files stored on as well as the sizes of outputs for each reducer, for passing
  * on to the reduce tasks.
+ *
+ * ShuffleMapTask 返回给scheduler的结果。包括该任务存储有 Shuffle 文件的block manager 地址，以及每个reducer的输出大小，以便传递给reduce任务。
  */
 private[spark] sealed trait MapStatus {
   /** Location where this task output is. */
@@ -71,9 +73,8 @@ private[spark] object MapStatus {
       mapTaskId: Long): MapStatus = {
     if (uncompressedSizes.length > minPartitionsToUseHighlyCompressMapStatus) {
       HighlyCompressedMapStatus(loc, uncompressedSizes, mapTaskId)
-    } else {
+    } else
       new CompressedMapStatus(loc, uncompressedSizes, mapTaskId)
-    }
   }
 
   private[this] val LOG_BASE = 1.1

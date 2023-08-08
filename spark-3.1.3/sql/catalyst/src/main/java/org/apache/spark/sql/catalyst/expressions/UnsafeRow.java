@@ -58,6 +58,12 @@ import static org.apache.spark.unsafe.Platform.BYTE_ARRAY_OFFSET;
  * (they are combined into a long).
  *
  * Instances of `UnsafeRow` act as pointers to row data stored in this format.
+ *
+ * Row 的不安全实现，它由原始内存而不是 Java 对象支持。每个元组由三部分组成：[空位集][值][可变长度部分] 位集用于空跟踪，
+ * 按 8 字节字边界对齐。每个字段存储一位。在 "值 "区域，每个字段存储一个 8 字节字。
+ * 对于包含固定长度原始类型（如 long、double 或 int）的字段，我们直接在字中存储值。
+ * 对于具有非原始或变长值的字段，我们会存储一个指向变长字段开头的相对偏移量（相对于行的基地址）和长度（
+ * 两者合并为一个 long）。不安全行"（UnsafeRow）的实例作为指针指向以这种格式存储的行数据
  */
 public final class UnsafeRow extends InternalRow implements Externalizable, KryoSerializable {
 

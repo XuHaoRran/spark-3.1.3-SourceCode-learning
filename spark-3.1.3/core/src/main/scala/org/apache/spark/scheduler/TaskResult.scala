@@ -35,7 +35,8 @@ private[spark] sealed trait TaskResult[T]
 private[spark] case class IndirectTaskResult[T](blockId: BlockId, size: Int)
   extends TaskResult[T] with Serializable
 
-/** A TaskResult that contains the task's return value, accumulator updates and metric peaks. */
+/** A TaskResult that contains the task's return value, accumulator updates and metric peaks.
+ * 任务结果（TaskResult）包含任务的返回值、累加器更新和度量峰值。*/
 private[spark] class DirectTaskResult[T](
     var valueBytes: ByteBuffer,
     var accumUpdates: Seq[AccumulatorV2[_, _]],

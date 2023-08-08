@@ -35,6 +35,12 @@ import org.apache.spark.util.collection.PairsWriter
  *
  * This class does not support concurrent writes. Also, once the writer has been opened it cannot be
  * reopened again.
+ *
+ *
+ *用于将JVM对象直接写入磁盘上的文件的类。此类允许将数据附加到现有块中。为了提高效率，
+ *它保留了跨多个提交的底层文件通道。此通道保持打开状态，直到调用close（）为止。在出现错误的情况下，
+ *调用方应改为使用revertPartialWritesAndClose（）关闭，以原子方式还原未提交的部分写入。
+ *此类不支持并发写入。此外，一旦写入程序被打开，它就不能再次打开。
  */
 private[spark] class DiskBlockObjectWriter(
     val file: File,
@@ -174,6 +180,10 @@ private[spark] class DiskBlockObjectWriter(
    * A commit may write additional bytes to frame the atomic block.
    *
    * @return file segment with previous offset and length committed on this call.
+   *
+   *
+   * 刷新部分写入并将其提交为单个原子块。
+   * 提交可以写入额外的字节来对原子块进行帧化。返回：在此调用中提交的具有上一偏移量和长度的文件段
    */
   def commitAndGet(): FileSegment = {
     if (streamOpen) {
@@ -271,6 +281,7 @@ private[spark] class DiskBlockObjectWriter(
 
   /**
    * Notify the writer that a record worth of bytes has been written with OutputStream#write.
+   * 通知写入程序已使用OutputStream#write写入了相当于字节的记录
    */
   def recordWritten(): Unit = {
     numRecordsWritten += 1

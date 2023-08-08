@@ -1739,7 +1739,6 @@ private[spark] class DAGScheduler(
   private[scheduler] def handleTaskCompletion(event: CompletionEvent): Unit = {
     val task = event.task
     val stageId = task.stageId
-
     outputCommitCoordinator.taskCompleted(
       stageId,
       task.stageAttemptId,
@@ -1864,6 +1863,8 @@ private[spark] class DAGScheduler(
               // 一些节点可能已经缓存了损坏的位置(从我们检测到的错误)，将需要纪元编号递增来
               // 重取它们
               // 待办事项:如果这不是第一次，那么只增加纪元编号，我们注册了 map输出
+
+              // 这行代码的作用是将当前任务处理的 Shuffle Map 分区的信息注册到 MapOutputTrackerMaster 中以便后续任务可以知道数据的位置，从而能够更高效地执行后续的 Shuffle 操作。
               mapOutputTracker.registerMapOutput(
                 shuffleStage.shuffleDep.shuffleId, smt.partitionId, status)
             }

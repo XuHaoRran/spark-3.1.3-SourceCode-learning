@@ -36,6 +36,11 @@ import org.apache.spark.internal.Logging
  * notifyAll() to signal changes to callers. Prior to Spark 1.6, this arbitration of memory across
  * tasks was performed by the ShuffleMemoryManager.
  *
+ * 为任务之间共享可调整大小的内存池制定策略和簿记。
+ * 尽量确保每个任务都能获得合理的内存份额，而不是某些任务先获得大量内存，然后导致其他任务反复溢出到磁盘。
+ * 由于 N 是动态变化的，我们会跟踪活动任务集，并在任务集发生变化时重新计算等待任务中的 1 / 2N 和 1 / N。
+ * 所有这些都是通过同步访问可变状态以及使用 wait() 和 notifyAll() 向调用者发送更改信号来完成的。在 Spark 1.6 之前，这种跨任务的内存仲裁由 ShuffleMemoryManager 执行。
+ *
  * @param lock a [[MemoryManager]] instance to synchronize on
  * @param memoryMode the type of memory tracked by this pool (on- or off-heap)
  */
@@ -76,6 +81,11 @@ private[memory] class ExecutionMemoryPool(
    * active tasks) before it is forced to spill. This can happen if the number of tasks increase
    * but an older task had a lot of memory already.
    *
+   * 尝试为给定任务获取最多 numBytes 的内存，并返回获取的字节数，如果无法分配，则返回 0。
+   * ---
+   * 在某些情况下，该调用可能会阻塞，直到有足够的空闲内存，以确保每个任务在被迫溢出内存之前，都有机会增加到总内存池的至少 1/2N（其中 N 是活动任务的数量）。
+   * 如果任务数量增加，但旧任务已拥有大量内存，就会出现这种情况。
+   *
    * @param numBytes number of bytes to acquire
    * @param taskAttemptId the task attempt acquiring memory
    * @param maybeGrowPool a callback that potentially grows the size of this pool. It takes in
@@ -86,7 +96,6 @@ private[memory] class ExecutionMemoryPool(
    *                           size is variable in certain cases. For instance, in unified
    *                           memory management, the execution pool can be expanded by evicting
    *                           cached blocks, thereby shrinking the storage pool.
-   *
    * @return the number of bytes granted to the task.
    */
   private[memory] def acquireMemory(

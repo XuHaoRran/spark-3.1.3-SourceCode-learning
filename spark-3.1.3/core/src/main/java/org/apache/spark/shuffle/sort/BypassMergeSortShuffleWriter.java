@@ -146,7 +146,7 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
     try {
       if (!records.hasNext()) {
         partitionLengths = mapOutputWriter.commitAllPartitions().getPartitionLengths();
-        // 下面代码的调用形式是对应在Java类中调用Scala提供的object中的applay方法的形式，是由编译器编译Scala中的object得到的结果来决定的
+        // 下面代码的调用形式是对应在Java类中调用Scala提供的object中的apply方法的形式，是由编译器编译Scala中的object得到的结果来决定的
         mapStatus = MapStatus$.MODULE$.apply(
           blockManager.shuffleServerId(), partitionLengths, mapId);
         return;

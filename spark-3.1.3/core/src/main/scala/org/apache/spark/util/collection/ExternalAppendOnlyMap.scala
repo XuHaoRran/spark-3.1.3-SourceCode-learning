@@ -139,6 +139,10 @@ class ExternalAppendOnlyMap[K, V, C](
    * otherwise, spill the in-memory map to disk.
    *
    * The shuffle memory usage of the first trackMemoryThreshold entries is not tracked.
+   *
+   * 将给定的键和值迭代器插入映射。
+   * 当底层映射需要增长时，检查全局洗牌内存池是否有足够的空间。如果有，则分配增长映射所需的内存；否则，将内存中的映射溢出到磁盘。
+   * 不会跟踪第一个 trackMemoryThreshold 条目的洗牌内存使用情况。
    */
   def insertAll(entries: Iterator[Product2[K, V]]): Unit = {
     if (currentMap == null) {

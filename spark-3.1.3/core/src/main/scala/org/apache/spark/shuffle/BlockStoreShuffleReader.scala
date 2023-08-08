@@ -75,6 +75,7 @@ private[spark] class BlockStoreShuffleReader[K, C](
   override def read(): Iterator[Product2[K, C]] = {
     // 真正的数据Iterator读取是通过ShuffleBlockFetcherIterator来完成的
     //
+    // 创建ShuffleBlockFetcherIterator的时候，迭代器调用在其initialize()方法
     val wrappedStreams = new ShuffleBlockFetcherIterator(
       context,
       blockManager.blockStoreClient,
@@ -95,7 +96,7 @@ private[spark] class BlockStoreShuffleReader[K, C](
     val serializerInstance = dep.serializer.newInstance()
 
     // Create a key/value iterator for each stream
-    // 为每个记录更新上下文任务度量
+    // 将shuffle 块反序列化为record迭代器
     val recordIter = wrappedStreams.flatMap { case (blockId, wrappedStream) =>
       // Note: the asKeyValueIterator below wraps a key/value iterator inside of a
       // NextIterator. The NextIterator makes sure that close() is called on the
@@ -122,9 +123,10 @@ private[spark] class BlockStoreShuffleReader[K, C](
     // 现在的Reducer端相对于Mapper端。Mapper端需要聚合，则进行combineCombinersByKey。Mapper端也可能不需要聚合，
     // 只需要进行Reducer端的操作。如果aggregator.isDefined没定义，则出错提示。
     val aggregatedIter: Iterator[Product2[K, C]] = if (dep.aggregator.isDefined) {
+//      reduce端聚合数据：如果map端已经聚合过了，则对读取到的聚合结果进行聚合。如果map端没有聚合，则针对未合并的<k,v>进行聚合。
       if (dep.mapSideCombine) {
         // We are reading values that are already combined
-        /// 如果在map端已经做了聚合的优化操作，则对读取道德聚合结果进行聚合
+        /// 如果在map端已经做了聚合的优化操作，则对读取到的聚合结果进行聚合
         // 注意此时聚合操作与数据类型和map端未做优化时是不同的
         val combinedKeyValuesIterator = interruptibleIter.asInstanceOf[Iterator[(K, C)]]
         // map端个分区针对key进行和并后的结果再次聚合
@@ -146,6 +148,7 @@ private[spark] class BlockStoreShuffleReader[K, C](
     // 是否需要针对分区内的数据进行排序的标识信息
     //如果定义了排序，则对输出结果进行排序
     // Sort the output if there is a sort ordering defined.
+
     val resultIter = dep.keyOrdering match {
       case Some(keyOrd: Ordering[K]) =>
         // Create an ExternalSorter to sort the data.
@@ -153,7 +156,7 @@ private[spark] class BlockStoreShuffleReader[K, C](
         // 为了减少内存的压力，避免GC 开销，引入了外部排序器对数据进行排序，当内存不足
         // 以容纳排序的数据量时，会根据配置的spark.shufflespill属性来决定是否需要
         // 溢出到磁盘中，默认情况下会打开spill开关，若不打开spill开关，数据量比
-        // 较大时会引发内存溢出问题(OutofMemory，00M)
+        // 较大时会引发内存溢出问题(OutofMemory，OOM)
 
         val sorter =
           new ExternalSorter[K, C, C](context, ordering = Some(keyOrd), serializer = dep.serializer)
@@ -171,6 +174,7 @@ private[spark] class BlockStoreShuffleReader[K, C](
         aggregatedIter
     }
     // 如果任务已完成或取消，使用回调停止排序
+    // 返回结果集迭代器
     resultIter match {
       case _: InterruptibleIterator[Product2[K, C]] => resultIter
       case _ =>

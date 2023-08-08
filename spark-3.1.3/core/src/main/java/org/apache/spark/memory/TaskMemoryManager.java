@@ -148,7 +148,7 @@ public class TaskMemoryManager {
   /**
    * Acquire N bytes of memory for a consumer. If there is no enough memory, it will call
    * spill() of consumers to release more memory.
-   *
+   * 为消费者获取 N 字节内存。如果没有足够的内存，它会调用消费者的 spill() 来释放更多内存。
    * @return number of bytes successfully granted (<= N).
    */
   public long acquireExecutionMemory(long required, MemoryConsumer consumer) {

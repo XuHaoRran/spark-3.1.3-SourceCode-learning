@@ -53,6 +53,8 @@ public abstract class BlockStoreClient implements Closeable {
    * Note that this API takes a sequence so the implementation can batch requests, and does not
    * return a future so the underlying implementation can invoke onBlockFetchSuccess as soon as
    * the data of a block is fetched, rather than waiting for all blocks to be fetched.
+   * 请注意，该应用程序接口会获取一个序列，因此实现可以批量处理请求，并且不会返回未来，
+   * 因此底层实现可以在获取到某个块的数据后立即调用 onBlockFetchSuccess，而不是等待所有块都被获取。
    *
    * @param host the host of the remote node.
    * @param port the port of the remote node.

@@ -93,6 +93,7 @@ private[spark] class TaskResultGetter(sparkEnv: SparkEnv, scheduler: TaskSchedul
                 /* We won't be able to get the task result if the machine that ran the task failed
                  * between when the task ended and when we tried to fetch the result, or if the
                  * block manager had to flush the result. */
+                // 如果运行任务的机器在任务结束和我们试图获取任务结果之间发生故障，或者区块管理器必须刷新结果，我们将无法获取任务结果。
                 scheduler.handleFailedTask(
                   taskSetManager, tid, TaskState.FINISHED, TaskResultLost)
                 return

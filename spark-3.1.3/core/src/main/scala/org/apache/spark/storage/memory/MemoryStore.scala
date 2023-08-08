@@ -469,6 +469,8 @@ private[spark] class MemoryStore(
             // We don't want to evict blocks which are currently being read, so we need to obtain
             // an exclusive write lock on blocks which are candidates for eviction. We perform a
             // non-blocking "tryLock" here in order to ignore blocks which are locked for reading:
+            // 我们不想驱逐正在被读取的区块，因此我们需要在可能被驱逐的区块上获取独占写锁。
+            // 我们在此执行非阻塞的 "tryLock"，以忽略已锁定的读取块：
             if (blockInfoManager.lockForWriting(blockId, blocking = false).isDefined) {
               selectedBlocks += blockId
               freedMemory += pair.getValue.size

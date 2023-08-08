@@ -51,46 +51,63 @@ import org.apache.spark.util.{Utils => TryUtils}
  * 为了区分下一个阶段Reducer Task不同的内容，它还需要有一个索引文件（Index）来告诉下游Stage的并行任务，那一部分是属于下游Stage的
  *
  * @param aggregator optional Aggregator with combine functions to use for merging data
+ *                   可选的聚合器，具有用于合并数据的组合函数
  * @param partitioner optional Partitioner; if given, sort by partition ID and then key
+ *                    可选的分区器；如果给定，按分区 ID 排序，然后按键排序
  * @param ordering optional Ordering to sort keys within each partition; should be a total ordering
+ *                 可选排序，用于对每个分区内的键进行排序；应为总排序
  * @param serializer serializer to use when spilling to disk
- *
+ *                    c将数据溢出到磁盘时使用的序列化器
  * Note that if an Ordering is given, we'll always sort using it, so only provide it if you really
  * want the output keys to be sorted. In a map task without map-side combine for example, you
  * probably want to pass None as the ordering to avoid extra sorting. On the other hand, if you do
  * want to do combining, having an Ordering is more efficient than not having it.
+ * 请注意，如果给定了排序，我们将始终使用它进行排序，因此只有在真正需要对输出键进行排序时才会提供它
+ * 。例如，在没有map-side组合的映射任务中，你可能希望传递 None 作为排序，以避免额外的排序。
+ * 另一方面，如果您确实想进行组合，那么使用排序比不使用排序更有效。
  *
  * Users interact with this class in the following way:
+ * 用户与该类的交互方式如下：
  *
  * 1. Instantiate an ExternalSorter.
- *
+ *  实例化一个ExternalSorter
  * 2. Call insertAll() with a set of records.
- *
+ *  使用一组记录调用insertAll()
  * 3. Request an iterator() back to traverse sorted/aggregated records.
- *     - or -
+ * 请求返回 iterator() 以遍历已排序/聚合的记录。
+ *     - or -  或
  *    Invoke writePartitionedFile() to create a file containing sorted/aggregated outputs
  *    that can be used in Spark's sort shuffle.
+ *     调用 writePartitionedFile() 创建一个包含排序/聚合输出的文件，该文件可用于 Spark 的排序洗牌。
  *
  * At a high level, this class works internally as follows:
+ * 从高层来看，该类的内部工作原理如下：
  *
  *  - We repeatedly fill up buffers of in-memory data, using either a PartitionedAppendOnlyMap if
  *    we want to combine by key, or a PartitionedPairBuffer if we don't.
  *    Inside these buffers, we sort elements by partition ID and then possibly also by key.
  *    To avoid calling the partitioner multiple times with each key, we store the partition ID
  *    alongside each record.
+ *    我们反复填充内存数据缓冲区，如果想按键进行组合，则使用 PartitionedAppendOnlyMap，如果不想，则使用 PartitionedPairBuffer。
+ *    在这些缓冲区中，我们按分区 ID 对元素进行排序，也可能按键进行排序。为了避免每个键都多次调用分区器，我们会在每条记录旁存储分区 ID。
  *
  *  - When each buffer reaches our memory limit, we spill it to a file. This file is sorted first
  *    by partition ID and possibly second by key or by hash code of the key, if we want to do
  *    aggregation. For each file, we track how many objects were in each partition in memory, so we
  *    don't have to write out the partition ID for every element.
+ *    当每个缓冲区的内存达到上限时，我们会将其溢出到一个文件中。该文件首先按分区 ID 排序，其次可能按键排序，
+ *    c如果要进行聚合，则按键的哈希代码排序。对于每个文件，我们都会在内存中跟踪每个分区中有多少个对象，因此不必为每个元素写出分区 ID。
  *
  *  - When the user requests an iterator or file output, the spilled files are merged, along with
  *    any remaining in-memory data, using the same sort order defined above (unless both sorting
  *    and aggregation are disabled). If we need to aggregate by key, we either use a total ordering
  *    from the ordering parameter, or read the keys with the same hash code and compare them with
  *    each other for equality to merge values.
+ *    当用户请求迭代器或文件输出时，溢出的文件将与任何剩余的内存数据一起合并，合并时使用的排序顺序与上文定义的相同（除非排序和聚合都被禁用）。
+ *    如果需要按键聚合，我们要么使用排序参数中的总排序，要么读取具有相同哈希代码的键，并比较它们是否相等，以合并值。
  *
  *  - Users are expected to call stop() at the end to delete all the intermediate files.
+ *    用户应在最后调用 stop() 删除所有中间文件。
  */
 private[spark] class ExternalSorter[K, V, C](
     context: TaskContext,
@@ -124,11 +141,16 @@ private[spark] class ExternalSorter[K, V, C](
   //
   // NOTE: Setting this too low can cause excessive copying when serializing, since some serializers
   // grow internal data structures by growing + copying every time the number of objects doubles.
+  //
+  // 从序列化器读取/写入时对象批次的大小。对象是分批写入的，每个批次使用自己的序列化流。这样可以减少反序列化流时构建的引用跟踪映射的大小。
+  //
+  //  注意：如果设置过低，可能会导致序列化时复制过多，因为有些序列化程序 每当对象数量翻倍时，就会通过增长 + 复制的方式来增长内部数据结构。
   private val serializerBatchSize = conf.get(config.SHUFFLE_SPILL_BATCH_SIZE)
 
   // Data structures to store in-memory objects before we spill. Depending on whether we have an
   // Aggregator set, we either put objects into an AppendOnlyMap where we combine them, or we
   // store them in an array buffer.
+  // 数据结构，以便在我们溢出之前存储内存中的对象。根据是否有聚合器集合，我们要么将对象放入 AppendOnlyMap 中进行组合，要么将其存储在数组缓冲区中。
   @volatile private var map = new PartitionedAppendOnlyMap[K, C]
   @volatile private var buffer = new PartitionedPairBuffer[K, C]
 
@@ -149,6 +171,10 @@ private[spark] class ExternalSorter[K, V, C](
   // user. (A partial ordering means that equal keys have comparator.compare(k, k) = 0, but some
   // non-equal keys also have this, so we need to do a later pass to find truly equal keys).
   // Note that we ignore this if no aggregator and no ordering are given.
+  // 键 K 的比较器，在分区中对键进行排序，以便进行汇总或排序。如果用户没有提供整体排序，可以通过哈希代码进行部分排序。
+  // 如果用户没有提供总排序，则可以通过哈希代码进行部分排序。(部分排序意味着相等的键有 comparator.compare(k, k) = 0，但一些不相等的键也有此排序。
+  //  但有些非相等键也有这样的情况，因此我们需要稍后再进行一次传递，以找到真正相等的键）。
+  //请注意，如果没有给出聚合器和排序，我们将忽略这一点。
   private val keyComparator: Comparator[K] = ordering.getOrElse((a: K, b: K) => {
     val h1 = if (a == null) 0 else a.hashCode()
     val h2 = if (b == null) 0 else b.hashCode()
@@ -180,20 +206,20 @@ private[spark] class ExternalSorter[K, V, C](
    */
   private[spark] def numSpills: Int = spills.size
 
-  def insertAll(records: Iterator[Product2[K, V]]): Unit = {
-    // TODO: stop combining if we find that the reduction factor isn't high
-    val shouldCombine = aggregator.isDefined
-    // shouldCombine判断是否需要聚合。一个基本的问题：
-    // 怎么知道是否需要聚合？算子和算子的配置参数决定了是否需要聚合。如果为true，
-    // 使用AppendOnlyMap首先在内存对值进行组合。
-    if (shouldCombine) {
-      // Combine values in-memory first using our AppendOnlyMap
-      // 使用AppendOnlyMap，首先在内存中组合值
-      val mergeValue = aggregator.get.mergeValue
-      val createCombiner = aggregator.get.createCombiner
-      var kv: Product2[K, V] = null
-      // update是偏函数。如果有值，就将新的value和旧的value进行合并；如果hadValue是false，则新建combiner，
-      // 相当于没有旧的值。从Hadoop的角度讲，Merge相当于hadoop的combiner，相同Key的Value进行聚合
+  def insertAll(records: Iterator[Product2[K, V]]):Unit = {
+        // TODO: stop combining if we find that the reduction factor isn't high
+        val shouldCombine = aggregator.isDefined
+        // shouldCombine判断是否需要聚合。一个基本的问题：
+        // 怎么知道是否需要聚合？算子和算子的配置参数决定了是否需要聚合。如果为true，
+        // 使用AppendOnlyMap首先在内存对值进行组合。
+        if (shouldCombine) {
+          // Combine values in-memory first using our AppendOnlyMap
+          // 使用AppendOnlyMap，首先在内存中组合值
+          val mergeValue = aggregator.get.mergeValue
+          val createCombiner = aggregator.get.createCombiner
+          var kv: Product2[K, V] = null
+          // update是偏函数。如果有值，就将新的value和旧的value进行合并；如果hadValue是false，则新建combiner，
+          // 相当于没有旧的值。从Hadoop的角度讲，Merge相当于hadoop的combiner，相同Key的Value进行聚合
       val update = (hadValue: Boolean, oldValue: C) => {
         if (hadValue) mergeValue(oldValue, kv._2) else createCombiner(kv._2)
       }
@@ -251,6 +277,8 @@ private[spark] class ExternalSorter[K, V, C](
    * @param collection whichever collection we're using (map or buffer)
    */
   override protected[this] def spill(collection: WritablePartitionedPairCollection[K, C]): Unit = {
+    // 据指定的比较器comparator进行排序，返回排序结果的迭代器
+    // 按照分区排序、分区相同则按键对排序
     val inMemoryIterator = collection.destructiveSortedWritablePartitionedIterator(comparator)
     // 生成一个溢写文件
     val spillFile = spillMemoryIteratorToDisk(inMemoryIterator)
@@ -281,7 +309,7 @@ private[spark] class ExternalSorter[K, V, C](
   private[this] def spillMemoryIteratorToDisk(inMemoryIterator: WritablePartitionedIterator)
       : SpilledFile = {
 
-    // 生长城临时文件的block和临时文件本身
+    // 生成了临时文件的block和临时文件本身
     // Because these files may be read during shuffle, their compression must be controlled by
     // spark.shuffle.compress instead of spark.shuffle.spill.compress, so we need to use
     // createTempShuffleBlock here; see SPARK-3426 for more context.
@@ -315,18 +343,26 @@ private[spark] class ExternalSorter[K, V, C](
 
     var success = false
     try {
+      // 遍历内存数据结构中的数据，在调用writeNext迭代器时会根据comparator按key排序，
+      // 缓存中的key为（partitionId, key）, 会先按分区排序，再按key排序。
       while (inMemoryIterator.hasNext) {
         val partitionId = inMemoryIterator.nextPartition()
         require(partitionId >= 0 && partitionId < numPartitions,
           s"partition Id: ${partitionId} should be in the range [0, ${numPartitions})")
+        //
+        // 将元素写入DiskBlockObjectWriter而不是返回它们的迭代程序 每个元素都有一个关联的分区
         inMemoryIterator.writeNext(writer)
         elementsPerPartition(partitionId) += 1
         objectsWritten += 1
 
+        // 从序列化器读取/写入时对象批次的大小。对象是分批写入的，每个批次使用自己的序列化流。
+        // 这样可以减少反序列化流时构建的引用跟踪映射的大小。
+        // 认每1000条生成一个fileSegement
         if (objectsWritten == serializerBatchSize) {
           flush()
         }
       }
+      // 最后刷写一次，然后就关闭writer了
       if (objectsWritten > 0) {
         flush()
         writer.close()
@@ -346,7 +382,7 @@ private[spark] class ExternalSorter[K, V, C](
         }
       }
     }
-
+    //    最终将溢写的文件封装为SpilledFile返回
     SpilledFile(file, blockId, batchSizes.toArray, elementsPerPartition)
   }
 
@@ -359,6 +395,14 @@ private[spark] class ExternalSorter[K, V, C](
    * partition we then have an iterator over its contents, and these are expected to be accessed
    * in order (you can't "skip ahead" to one partition without reading the previous one).
    * Guaranteed to return a key-value pair for each partition, in order of partition ID.
+   *
+   * 合并已排序的文件序列，给出分区迭代器和每个分区内的元素迭代器。这可用于写入新文件或向用户返回数据。
+   *
+   * 返回写入此对象的所有数据的迭代器，按分区分组。对于每个分区，我们都有一个内容迭代器，
+   * 这些内容应按顺序访问（不能 "跳过 "一个分区而不读取前一个分区）。
+   * 保证按分区 ID 的顺序为每个分区返回一个键值对
+   *
+   * 。
    */
   private def merge(spills: Seq[SpilledFile], inMemory: Iterator[((Int, K), C)])
       : Iterator[(Int, Iterator[Product2[K, C]])] = {
@@ -414,6 +458,11 @@ private[spark] class ExternalSorter[K, V, C](
    * iterator is sorted by key with a given comparator. If the comparator is not a total ordering
    * (e.g. when we sort objects by hash code and different keys may compare as equal although
    * they're not), we still merge them by doing equality tests for all keys that compare as equal.
+   *
+   *
+   * 通过聚合每个键的值来合并（K，C）迭代器序列，假设每个迭代器都是通过给定的比较器按键排序的。如果比较器不是完全排序（例如，
+   * 当我们根据哈希码对对象进行排序时，不同的键可能会比较为相等，尽管它们不是），
+   * 我们仍然会通过对所有比较为相等的键进行相等测试来合并它们。
    */
   private def mergeWithAggregation(
       iterators: Seq[Iterator[Product2[K, C]]],
@@ -660,9 +709,15 @@ private[spark] class ExternalSorter[K, V, C](
    * partition without reading the previous one). Guaranteed to return a key-value pair for each
    * partition, in order of partition ID.
    *
+   * 返回写入此对象的所有数据的迭代器，这些数据按分区分组，并按请求的聚合器聚合。对于每个分区，
+   * 我们都有一个其内容的迭代器，这些内容应按顺序访问（不能 "跳过 "一个分区而不读取前一个分区）。保证按分区 ID 的顺序为每个分区返回键值对。
+   *
    * For now, we just merge all the spilled files in once pass, but this can be modified to
    * support hierarchical merging.
    * Exposed for testing.
+   * 目前，我们只是一次性合并所有溢出的文件，但可以修改为：
+   * 支持分层合并。
+   * 公开测试。
    */
   def partitionedIterator: Iterator[(Int, Iterator[Product2[K, C]])] = {
     val usingMap = aggregator.isDefined
@@ -752,7 +807,8 @@ private[spark] class ExternalSorter[K, V, C](
   /**
    * Write all the data added into this ExternalSorter into a map output writer that pushes bytes
    * to some arbitrary backing store. This is called by the SortShuffleWriter.
-   *
+   * 将添加到此ExternalSorter的所有数据写入映射输出写入程序，该写入程序将字节推送到某个任意的后备存储。
+   * 这是由SortShuffleWriter调用的。返回：文件的每个分区的长度数组（以字节为单位）（由映射输出跟踪器使用）
    * @return array of lengths, in bytes, of each partition of the file (used by map output tracker)
    */
   def writePartitionedMapOutput(
@@ -760,9 +816,12 @@ private[spark] class ExternalSorter[K, V, C](
       mapId: Long,
       mapOutputWriter: ShuffleMapOutputWriter): Unit = {
     var nextPartitionId = 0
+    // 如果没有溢出的文件
     if (spills.isEmpty) {
       // Case where we only have in-memory data
+      // 就是仅有内存文件
       val collection = if (aggregator.isDefined) map else buffer
+      // 先对内存中的文件进行一个排序
       val it = collection.destructiveSortedWritablePartitionedIterator(comparator)
       while (it.hasNext()) {
         val partitionId = it.nextPartition()
@@ -788,12 +847,14 @@ private[spark] class ExternalSorter[K, V, C](
         nextPartitionId = partitionId + 1
       }
     } else {
+      // 注意这里，这里进行了排序，将spill出来的文件归并排序，并通过iterator进行封装
       // We must perform merge-sort; get an iterator by partition and write everything directly.
       for ((id, elements) <- this.partitionedIterator) {
         val blockId = ShuffleBlockId(shuffleId, mapId, id)
         var partitionWriter: ShufflePartitionWriter = null
         var partitionPairsWriter: ShufflePartitionPairsWriter = null
         TryUtils.tryWithSafeFinally {
+          // 获取reducePartitionId对应的writer
           partitionWriter = mapOutputWriter.getPartitionWriter(id)
           partitionPairsWriter = new ShufflePartitionPairsWriter(
             partitionWriter,
@@ -803,6 +864,7 @@ private[spark] class ExternalSorter[K, V, C](
             context.taskMetrics().shuffleWriteMetrics)
           if (elements.hasNext) {
             for (elem <- elements) {
+              // 按照不同的reduceId写输出文件
               partitionPairsWriter.write(elem._1, elem._2)
             }
           }

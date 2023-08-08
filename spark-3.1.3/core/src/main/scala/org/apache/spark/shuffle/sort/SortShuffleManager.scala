@@ -184,32 +184,32 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
    *
    * */
   override def getWriter[K, V](
-      handle: ShuffleHandle,
-      mapId: Long,
-      context: TaskContext,
-      metrics: ShuffleWriteMetricsReporter): ShuffleWriter[K, V] = {
+        handle: ShuffleHandle,
+        mapId: Long,
+        context: TaskContext,
+        metrics: ShuffleWriteMetricsReporter): ShuffleWriter[K, V] = {
     val mapTaskIds = taskIdMapsForShuffle.computeIfAbsent(
-      handle.shuffleId, _ => new OpenHashSet[Long](16))
+    handle.shuffleId, _ => new OpenHashSet[Long](16))
     mapTaskIds.synchronized { mapTaskIds.add(context.taskAttemptId()) }
     val env = SparkEnv.get
-    // 通过ShuffleHandle类型的模式匹配，构建具体的数据写入器
+      // 通过ShuffleHandle类型的模式匹配，构建具体的数据写入器
     handle match {
       // SerializedShuffleHandle对应的写入器为UnsafeShuffleWriter
       // 使用的数据块逻辑与物理映射关系仍然为IndexShuffleBlockResolver，对应SortShuffleManager中的变量，因此相同
       // 而该变量使用的是与基于Hash的Shuffle实现机制不同的解析类，即当前使用的IndexShuffleBlockResolver
-      case unsafeShuffleHandle: SerializedShuffleHandle[K @unchecked, V @unchecked] =>
-        new UnsafeShuffleWriter(
-          env.blockManager,
-          // 构建了一个TaskMemoryManager实例并传入UnsafeShuffleWriter，TaskMemory与Task是一对一关系，负责管理分配给Task的内存
-          // taskcontext上下文是Task启动过程中给内存分配内存管理器！Task被序列化到Executor中，之后反序列化运行，构建MemoryManager的一个实例。
-          context.taskMemoryManager(),
-          unsafeShuffleHandle,
-          mapId,
-          context,
-          env.conf,
-          metrics,
-          shuffleExecutorComponents)
-      case bypassMergeSortHandle: BypassMergeSortShuffleHandle[K @unchecked, V @unchecked] =>
+    case unsafeShuffleHandle: SerializedShuffleHandle[K @unchecked, V @unchecked] =>
+    new UnsafeShuffleWriter(
+    env.blockManager,
+      // 构建了一个TaskMemoryManager实例并传入UnsafeShuffleWriter，TaskMemory与Task是一对一关系，负责管理分配给Task的内存
+      // taskcontext上下文是Task启动过程中给内存分配内存管理器！Task被序列化到Executor中，之后反序列化运行，构建MemoryManager的一个实例。
+    context.taskMemoryManager(),
+    unsafeShuffleHandle,
+    mapId,
+    context,
+    env.conf,
+    metrics,
+    shuffleExecutorComponents)
+    case bypassMergeSortHandle: BypassMergeSortShuffleHandle[K @unchecked, V @unchecked] =>
         new BypassMergeSortShuffleWriter(
           env.blockManager,
           bypassMergeSortHandle,

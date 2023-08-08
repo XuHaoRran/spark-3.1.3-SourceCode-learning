@@ -31,7 +31,7 @@ public final class JavaWordCount {
   private static final Pattern SPACE = Pattern.compile(" ");
 
   public static void main(String[] args) throws Exception {
-
+    args = new String[]{"D:\\programe\\BigDataPrograms\\spark-3.1.3\\spark-3.1.3\\examples\\src\\main\\scala\\org\\apache\\spark\\examples\\my_test\\chapter3_RDD_DataSet\\helloSpark.txt"};
     if (args.length < 1) {
       System.err.println("Usage: JavaWordCount <file>");
       System.exit(1);
@@ -39,6 +39,7 @@ public final class JavaWordCount {
 
     SparkSession spark = SparkSession
       .builder()
+      .master("local")
       .appName("JavaWordCount")
       .getOrCreate();
 

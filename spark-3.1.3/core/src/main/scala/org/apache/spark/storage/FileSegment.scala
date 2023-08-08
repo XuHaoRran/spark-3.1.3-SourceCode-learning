@@ -22,6 +22,8 @@ import java.io.File
 /**
  * References a particular segment of a file (potentially the entire file),
  * based off an offset and a length.
+ *
+ * 基于偏移和长度引用文件的特定段（可能是整个文件）。
  */
 private[spark] class FileSegment(val file: File, val offset: Long, val length: Long) {
   require(offset >= 0, s"File segment offset cannot be negative (got $offset)")

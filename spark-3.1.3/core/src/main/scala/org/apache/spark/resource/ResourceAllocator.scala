@@ -94,6 +94,7 @@ private[spark] trait ResourceAllocator {
    * Release a sequence of resource addresses, these addresses must have been assigned. Resource
    * addresses are released when a task has finished.
    * Throw an Exception if an address is not assigned or doesn't exist.
+   * 释放资源地址序列，这些地址必须是已分配的。任务完成后，资源地址将被释放。如果地址未分配或不存在，则抛出异常。
    */
   def release(addrs: Seq[String]): Unit = {
     addrs.foreach { address =>

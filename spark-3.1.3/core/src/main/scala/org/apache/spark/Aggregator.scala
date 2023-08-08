@@ -23,20 +23,22 @@ import org.apache.spark.util.collection.ExternalAppendOnlyMap
 /**
  * :: DeveloperApi ::
  * A set of functions used to aggregate data.
- *
+ *  // shuffle中的aggregate操作实际是把一个KV对的集合，变成一个KC对的map， C是指combiner，是V聚合成的结果。
+ *  // Aggregator的三个类型参数K, V, C即代表Key的类型， Value的类型和Combiner的类型。
  * @param createCombiner function to create the initial value of the aggregation.
  * @param mergeValue function to merge a new value into the aggregation result.
  * @param mergeCombiners function to merge outputs from multiple mergeValue function.
  */
 @DeveloperApi
 case class Aggregator[K, V, C] (
-    createCombiner: V => C,
-    mergeValue: (C, V) => C,
-    mergeCombiners: (C, C) => C) {
+    createCombiner: V => C, // 描述了对于原KV对里由一个Value生成Combiner，以作为聚合的起始点。
+    mergeValue: (C, V) => C, // 描述了如何把一个新的Value(类型为V)合并到之前聚合的结果(类型为C)里
+    mergeCombiners: (C, C) => C) {  // 描述了如何把两个分别聚合好了的Combiner再聚合
 
   def combineValuesByKey(
       iter: Iterator[_ <: Product2[K, V]],
       context: TaskContext): Iterator[(K, C)] = {
+
     val combiners = new ExternalAppendOnlyMap[K, V, C](createCombiner, mergeValue, mergeCombiners)
     combiners.insertAll(iter)
     updateMetrics(context, combiners)

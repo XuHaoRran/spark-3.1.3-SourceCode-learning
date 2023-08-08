@@ -94,6 +94,11 @@ private[spark] trait ShuffleManager {
    * If endMapIndex=Int.MaxValue, the actual endMapIndex will be changed to the length of total map
    * outputs of the shuffle in `getMapSizesByExecutorId`.
    *
+   * 为一定范围的还原分区（startPartition 到 endPartition-1，含首尾两个分区）获取读取器，
+   * 以便从一定范围的地图输出（startMapIndex 到 endMapIndex-1，含首尾两个分区）中读取数据。如果 endMapIndex=Int.MaxValue，
+   * 实际 endMapIndex 将被改为 getMapSizesByExecutorId 中洗牌的总映射输出长度。由还原任务在执行器上调用。
+   *
+   *
    * Called on executors by reduce tasks.
    */
   def getReader[K, C](

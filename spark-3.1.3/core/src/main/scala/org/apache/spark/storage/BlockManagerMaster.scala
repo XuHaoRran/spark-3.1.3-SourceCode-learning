@@ -156,6 +156,7 @@ class BlockManagerMaster(
   /**
    * Remove a block from the storage endpoints that have it. This can only be used to remove
    * blocks that the driver knows about.
+   * 从拥有该block的存储端口移除该数据块，这只能用于移除drive知道的block
    */
   def removeBlock(blockId: BlockId): Unit = {
     driverEndpoint.askSync[Boolean](RemoveBlock(blockId))

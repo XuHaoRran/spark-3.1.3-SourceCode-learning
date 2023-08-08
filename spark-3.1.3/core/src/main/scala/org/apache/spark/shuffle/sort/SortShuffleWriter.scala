@@ -116,6 +116,7 @@ private[spark] class SortShuffleWriter[K, V, C](
       }
     } finally {
       // Clean up our sorter, which may have its own intermediate files
+      // 清理我们的sorter，它可能有自己的中间文件
       if (sorter != null) {
         val startTime = System.nanoTime()
         sorter.stop()

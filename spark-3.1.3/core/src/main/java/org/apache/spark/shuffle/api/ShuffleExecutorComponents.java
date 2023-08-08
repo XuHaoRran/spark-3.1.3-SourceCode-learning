@@ -47,6 +47,8 @@ public interface ShuffleExecutorComponents {
    * Called once per map task to create a writer that will be responsible for persisting all the
    * partitioned bytes written by that map task.
    *
+   * 每个map task调用一次，以创建一个编写器，负责持久化该映射任务编写的所有分区字节。
+   *
    * @param shuffleId Unique identifier for the shuffle the map task is a part of
    * @param mapTaskId An ID of the map task. The ID is unique within this Spark application.
    * @param numPartitions The number of partitions that will be written by the map task. Some of

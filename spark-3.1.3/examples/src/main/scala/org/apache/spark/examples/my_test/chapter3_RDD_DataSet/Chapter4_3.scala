@@ -2,16 +2,15 @@ package org.apache.spark.examples.my_test.chapter3_RDD_DataSet
 
 
 import org.apache.spark.{SparkConf, SparkContext}
-
 object Chapter4_3 {
     def main(args: Array[String]): Unit = {
         val conf = new SparkConf() //创建SparkConf对象
-        conf.setSparkHome("D:\\programe\\spark-3.1.3\\spark-3.1.3\\bin")
+        conf.setSparkHome("D:\\programe\\BigDataPrograms\\spark-3.1.3\\spark-3.1.3\\bin")
         conf.setAppName("Wow,My First Spark App!") //设置应用程序的名称，在程序运行的监控界面可以看到名称
         conf.setMaster("local-cluster[1,1,1024]") //此时，程序在本地运行，不需要安装Spark集群
 
         val sc = new SparkContext(conf)
-        sc.setLocalProperty("spark.home", "D:\\programe\\spark-3.1.3\\spark-3.1.3\\bin")
+        sc.setLocalProperty("spark.home", "D:\\programe\\BigDataPrograms\\spark-3.1.3\\spark-3.1.3\\bin")
 
         val num = Array(100,80,70)
         val rddnum = sc.parallelize(num)

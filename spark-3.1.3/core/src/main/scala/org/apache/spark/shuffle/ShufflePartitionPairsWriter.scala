@@ -28,6 +28,8 @@ import org.apache.spark.util.collection.PairsWriter
 /**
  * A key-value writer inspired by {@link DiskBlockObjectWriter} that pushes the bytes to an
  * arbitrary partition writer instead of writing to local disk through the block manager.
+ *
+ * 受DiskBlockObjectWriter启发的键值写入程序，它将字节推送到任意分区写入程序，而不是通过块管理器写入本地磁盘
  */
 private[spark] class ShufflePartitionPairsWriter(
     partitionWriter: ShufflePartitionWriter,

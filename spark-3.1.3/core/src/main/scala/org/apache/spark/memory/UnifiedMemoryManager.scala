@@ -59,7 +59,7 @@ import org.apache.spark.storage.BlockId
  */
 private[spark] class UnifiedMemoryManager(
     conf: SparkConf,
-    val maxHeapMemory: Long,
+    val maxHeapMemory: Long, //  maxMemory = (systemMemory - RESERVED_SYSTEM_MEMORY_BYTES(300MB)) * 0.6
     onHeapStorageRegionSize: Long,
     numCores: Int)
   extends MemoryManager(
@@ -137,11 +137,15 @@ private[spark] class UnifiedMemoryManager(
         // storage. We can reclaim any free memory from the storage pool. If the storage pool
         // has grown to become larger than `storageRegionSize`, we can evict blocks and reclaim
         // the memory that storage has borrowed from execution.
+
+        // 可以从storagePool中回收的内存大小 = storage中空闲的memory 和 storagePool的大小 - storageRegionSize 中的最大值
         val memoryReclaimableFromStorage = math.max(
           storagePool.memoryFree,
           storagePool.poolSize - storageRegionSize)
+        // 如果可以回收的内存大于0
         if (memoryReclaimableFromStorage > 0) {
           // Only reclaim as much space as is necessary and available:
+          // 回收的空间 = 需要的额外内存 和 可以回收的内存 中的最小值
           val spaceToReclaim = storagePool.freeSpaceToShrinkPool(
             math.min(extraMemoryNeeded, memoryReclaimableFromStorage))
           // 减少storagePool的内存
@@ -169,6 +173,7 @@ private[spark] class UnifiedMemoryManager(
      * 把需要的内存资源量提交给StorageMemoryPool的freeSpaceToShrinkPool方法。
      */
     def computeMaxExecutionPoolSize(): Long = {
+      // 最大的executionpoolsize = maxMemory - min(已经使用的storagepoolsize, storageRegionSize)
       maxMemory - math.min(storagePool.memoryUsed, storageRegionSize)
     }
     // 最终调用MemoryPool的acquireMemory方法，申请内存
@@ -240,11 +245,13 @@ object UnifiedMemoryManager {
   private val RESERVED_SYSTEM_MEMORY_BYTES = 300 * 1024 * 1024
 
   def apply(conf: SparkConf, numCores: Int): UnifiedMemoryManager = {
+    // maxMemory = (systemMemory - RESERVED_SYSTEM_MEMORY_BYTES(300MB)) * 0.6
     val maxMemory = getMaxMemory(conf)
     new UnifiedMemoryManager(
       conf,
       maxHeapMemory = maxMemory,
       // 通过配置属性spark.memory.storageFraction来设置存储内存占用比例，默认为0.5
+      // (system内存-预留内存) * 0. 6 * MEMORY_STORAGE_FRACTION(0.5) =  (system内存-预留内存) * 0.3 = 堆内Storage内存空间
       onHeapStorageRegionSize =
         (maxMemory * conf.get(config.MEMORY_STORAGE_FRACTION)).toLong,
       numCores = numCores)
@@ -268,6 +275,7 @@ object UnifiedMemoryManager {
     }
     // SPARK-12759 Check executor memory to fail fast if memory is insufficient
     // 检查执行器内存，如果内存不足，则快速失败
+    // 默认1g
     if (conf.contains(config.EXECUTOR_MEMORY)) {
       val executorMemory = conf.getSizeAsBytes(config.EXECUTOR_MEMORY.key)
       if (executorMemory < minSystemMemory) {
@@ -276,10 +284,14 @@ object UnifiedMemoryManager {
           s"--executor-memory option or ${config.EXECUTOR_MEMORY.key} in Spark configuration.")
       }
     }
+    // 剩下可用的内存
     val usableMemory = systemMemory - reservedMemory
 
     // 当前Executor与Storage共享的最大内存，可用内存×0.6=600MB
     // 用户内存可用内存×0.4=400MB
+
+    // 用于执行和存储的部分（堆空间 - 300MB）。该值越小，溢出和缓存数据驱逐发生的频率越高。
+    // 该配置的目的是为内部元数据、用户数据结构和稀疏、异常大记录的不精确大小估计预留内存。建议将其保留为默认值。
     val memoryFraction = conf.get(config.MEMORY_FRACTION)
     (usableMemory * memoryFraction).toLong
   }
